@@ -108,12 +108,28 @@ function sanitizeConnectionString(raw) {
   return str;
 }
 
+function findConnectionString() {
+  // 1. Direct standard variables
+  if (process.env.POSTGRES_URL) return process.env.POSTGRES_URL;
+  if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
+  if (process.env.POSTGRES_PRISMA_URL) return process.env.POSTGRES_PRISMA_URL;
+  if (process.env.POSTGRES_URL_NON_POOLING) return process.env.POSTGRES_URL_NON_POOLING;
+
+  // 2. Scan all env variables for Vercel Storage custom prefixes (e.g. CANARA_DB_POSTGRES_URL, STORE_POSTGRES_URL, etc.)
+  for (const [key, val] of Object.entries(process.env)) {
+    if (!val || typeof val !== 'string') continue;
+    const lowerVal = val.trim().toLowerCase();
+    if (lowerVal.startsWith('postgres://') || lowerVal.startsWith('postgresql://')) {
+      console.log(`🔍 [PostgreSQL] Found database connection URL in environment variable: "${key}"`);
+      return val;
+    }
+  }
+
+  return null;
+}
+
 function getPool() {
-  const rawConnString =
-    process.env.POSTGRES_URL ||
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_PRISMA_URL ||
-    process.env.POSTGRES_URL_NON_POOLING;
+  const rawConnString = findConnectionString();
 
   if (!rawConnString) {
     return null;

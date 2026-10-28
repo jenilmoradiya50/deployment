@@ -23,10 +23,14 @@ app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 // -------------------------------------------------------------
 app.get('/api/health', async (req, res) => {
   const dbStatus = await db.getDbStatus();
+  const dbRelatedKeys = Object.keys(process.env).filter(k => 
+    k.includes('POSTGRES') || k.includes('DATABASE') || k.includes('DB') || k.includes('SQL') || k.includes('STORAGE')
+  );
   res.json({
     status: 'ok',
     service: 'Canara Bank SD-WAN Work Tracker API',
     database: dbStatus,
+    detectedDbKeys: dbRelatedKeys,
     timestamp: new Date().toISOString()
   });
 });
