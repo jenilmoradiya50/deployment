@@ -91,15 +91,25 @@ CREATE INDEX IF NOT EXISTS idx_records_claimed_by ON records (claimed_by);
 CREATE INDEX IF NOT EXISTS idx_records_working ON records (working);
 
 -- 4. INSERT DEFAULT ADMINISTRATOR
--- Username: Admin@Canara
--- Password: Qwerty@123 (bcrypt hash: $2a$10$wYq.n1R8k7FhZJ3wTfJg0e7IuX1qZ9V6xO8Y3A4k5L6m7N8o9P0qR)
+-- Username: Admin@Canara & admin
+-- Password: Qwerty@123
 INSERT INTO users (id, username, password_hash, name, phone, role)
-VALUES (
+VALUES 
+(
   'usr-admin-canara-001',
   'Admin@Canara',
-  '$2a$10$tZz2YVl5k7hQp1mJ5oY8uOi3mX4bC8wQ1sA7vE9rG2tK6jN4pL8vW',
+  '$2a$10$5bA1ikM3.eShH8BEYBS1ye1qitIFm8rcqKixhxjjfKGGDSfTI7k36',
+  'Canara Bank SD-WAN Admin',
+  '9876543210',
+  'admin'
+),
+(
+  'usr-admin-canara-002',
+  'admin',
+  '$2a$10$5bA1ikM3.eShH8BEYBS1ye1qitIFm8rcqKixhxjjfKGGDSfTI7k36',
   'Canara Bank SD-WAN Admin',
   '9876543210',
   'admin'
 )
-ON CONFLICT (username) DO NOTHING;
+ON CONFLICT (username) DO UPDATE 
+SET password_hash = '$2a$10$5bA1ikM3.eShH8BEYBS1ye1qitIFm8rcqKixhxjjfKGGDSfTI7k36';

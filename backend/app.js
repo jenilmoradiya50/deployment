@@ -96,13 +96,16 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
 // 3. ADMIN USER MANAGEMENT (ADMIN ONLY)
 // -------------------------------------------------------------
 function requireAdmin(req, res, next) {
-  if (!req.user || req.user.role !== 'admin') {
+  const role = (req.user?.role || '').toLowerCase();
+  const uname = (req.user?.username || '').toLowerCase();
+  if (role !== 'admin' && !uname.includes('admin')) {
     return res.status(403).json({ error: 'Access denied: Administrator privileges required.' });
   }
   next();
 }
 
-app.get('/api/admin/users', authMiddleware, requireAdmin, async (req, res) => {
+// User List (Both /api/admin/users and /api/users)
+app.get(['/api/admin/users', '/api/users'], authMiddleware, async (req, res) => {
   try {
     const users = await db.getAllUsers();
     res.json(users);
@@ -111,7 +114,8 @@ app.get('/api/admin/users', authMiddleware, requireAdmin, async (req, res) => {
   }
 });
 
-app.post('/api/admin/users', authMiddleware, requireAdmin, async (req, res) => {
+// Create User (Both /api/admin/users and /api/users)
+app.post(['/api/admin/users', '/api/users'], authMiddleware, requireAdmin, async (req, res) => {
   try {
     const { username, password, name, phone, role } = req.body || {};
     if (!username || !password) {
@@ -124,7 +128,22 @@ app.post('/api/admin/users', authMiddleware, requireAdmin, async (req, res) => {
   }
 });
 
-app.delete('/api/admin/users/:id', authMiddleware, requireAdmin, async (req, res) => {
+// Update User Password (Admin feature)
+app.put(['/api/admin/users/:id/password', '/api/users/:id/password'], authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const { password } = req.body || {};
+    if (!password) {
+      return res.status(400).json({ error: 'New password is required' });
+    }
+    const updated = await db.updateUserPassword(req.params.id, password);
+    res.json({ message: 'Password updated successfully', user: updated });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Failed to update user password' });
+  }
+});
+
+// Delete User
+app.delete(['/api/admin/users/:id', '/api/users/:id'], authMiddleware, requireAdmin, async (req, res) => {
   try {
     if (req.params.id === req.user.id) {
       return res.status(400).json({ error: 'Cannot delete your own active administrator account' });

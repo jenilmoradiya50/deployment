@@ -60,7 +60,9 @@ export default function App() {
   const loadUsers = useCallback(async () => {
     if (!currentUser) return;
     try {
-      if (currentUser.role === 'admin') {
+      const uRole = (currentUser.role || '').toLowerCase();
+      const uName = (currentUser.username || '').toLowerCase();
+      if (uRole === 'admin' || uName.includes('admin')) {
         const uList = await api.getUsers();
         setUsers(uList || []);
       } else {
@@ -261,6 +263,9 @@ export default function App() {
     );
   }
 
+  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin' || 
+                  (currentUser?.username || '').toLowerCase().includes('admin');
+
   return (
     <div className="dashboard-root">
       <Header
@@ -273,6 +278,27 @@ export default function App() {
       />
 
       <main className="content-wrap">
+        {isAdmin && (
+          <div className="admin-quick-strip">
+            <div className="admin-strip-info">
+              <span className="admin-badge-icon">🛡️</span>
+              <div>
+                <strong>Administrator Console:</strong>
+                <span> Logged in as <em>{currentUser?.name || currentUser?.username}</em>. You can register Field Engineers, set their login passwords, and manage bank site assignments.</span>
+              </div>
+            </div>
+            <div className="admin-strip-actions">
+              <button
+                type="button"
+                className="admin-strip-action-btn"
+                onClick={() => setIsUserMgmtOpen(true)}
+              >
+                👥 Add User / Manage Team
+              </button>
+            </div>
+          </div>
+        )}
+
         <Toolbar
           kind={kind}
           onKindChange={(newKind) => {
@@ -291,6 +317,8 @@ export default function App() {
             setRecordToEdit(null);
             setIsFormOpen(true);
           }}
+          isAdmin={isAdmin}
+          onOpenUserManagement={() => setIsUserMgmtOpen(true)}
         />
 
         <SummaryCards

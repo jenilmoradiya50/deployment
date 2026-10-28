@@ -129,6 +129,19 @@ export const api = {
     return await res.json();
   },
 
+  async updateUserPassword(id, password) {
+    const res = await fetch(`${API_BASE}/admin/users/${id}/password`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify({ password })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update user password');
+    }
+    return await res.json();
+  },
+
   // Records: Query
   async getRecords(params = {}) {
     const query = new URLSearchParams();
