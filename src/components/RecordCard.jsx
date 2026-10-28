@@ -155,7 +155,7 @@ export default function RecordCard({
               {isClaimedByMe && <span className="you-tag">(You)</span>}
             </span>
           ) : (
-            <span className="claim-unassigned-tag">Unassigned / Open</span>
+            <span className="claim-unassigned-tag">⚪ Open Pool (Unassigned)</span>
           )}
         </div>
 
@@ -166,9 +166,9 @@ export default function RecordCard({
               type="button"
               className="claim-action-btn"
               onClick={() => onClaim(record.id)}
-              title="Take ownership of this unassigned site"
+              title="Take ownership of this unassigned site into your active queue"
             >
-              Take / Claim Site
+              ✋ Take / Claim Site
             </button>
           )}
 
@@ -208,6 +208,11 @@ export default function RecordCard({
             {!isBranch && record.dpCode && (
               <span className="base-dp-badge" title="Parent Branch Base DP">
                 🏛️ Base DP: <strong>{record.dpCode}</strong>
+              </span>
+            )}
+            {isUnassigned && (
+              <span className="open-pool-badge" title="Open site in deployment pool: click 'Take / Claim Site' to assign to yourself">
+                🌐 Open Site
               </span>
             )}
             
@@ -264,6 +269,13 @@ export default function RecordCard({
 
       {/* COMPACT SUMMARY VIEW (Always visible) */}
       <div className="site-compact-summary">
+        {isUnassigned && (
+          <div className="compact-field">
+            <span className="compact-lbl">Assignment:</span>
+            <span className="open-tag-pill">⚪ Open Pool (Unassigned)</span>
+          </div>
+        )}
+
         {!isBranch && record.dpCode && (
           <div className="compact-field">
             <span className="compact-lbl">Base Branch DP:</span>

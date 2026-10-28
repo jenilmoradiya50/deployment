@@ -789,8 +789,21 @@ const db = {
     const newId = generateId('site');
 
     let secondaryIps = Array.isArray(data.secondaryLanIps) ? data.secondaryLanIps.slice(0, 3) : [];
-    const claimedBy = data.claimedBy || author;
-    const claimedByName = data.claimedByName || authorName;
+    const role = (user.role || '').toLowerCase();
+    const isPMRole = role === 'pm' || role === 'admin' || author.toLowerCase().includes('admin');
+    const explicitlyUnassigned = data.isUnassigned === true || data.claimedBy === '' || data.claimedBy === 'unassigned';
+
+    let claimedBy = '';
+    let claimedByName = '';
+    if (!explicitlyUnassigned) {
+      if (data.claimedBy) {
+        claimedBy = data.claimedBy;
+        claimedByName = data.claimedByName || authorName;
+      } else if (!isPMRole) {
+        claimedBy = author;
+        claimedByName = authorName;
+      }
+    }
 
     const deploymentStatus = data.deploymentStatus || (data.working === 'Yes' ? 'Completed' : (data.working === 'No' ? 'Failed' : 'Pending'));
     const working = deploymentStatus === 'Completed' ? 'Yes' : (deploymentStatus === 'Failed' ? 'No' : (data.working || 'No'));

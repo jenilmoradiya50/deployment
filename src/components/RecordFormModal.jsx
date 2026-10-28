@@ -26,10 +26,16 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
       setSecondaryIps(Array.isArray(recordToEdit.secondaryLanIps) ? [...recordToEdit.secondaryLanIps] : []);
       setIsQuickAdd(false);
     } else {
+      const userRole = (currentUser?.role || '').toLowerCase();
+      const isPMOrAdmin = userRole === 'pm' || userRole === 'admin' || (currentUser?.username || '').toLowerCase().includes('admin');
+
       setFormData({
         kind: kind === 'All' ? 'Branch' : kind,
-        claimedBy: currentUser?.username || 'Admin@Canara',
-        claimedByName: currentUser?.name || currentUser?.username || 'Admin',
+        // For PM & Admin: default to Unassigned so any NOC can claim it
+        // For NOC: default to themselves
+        claimedBy: isPMOrAdmin ? '' : (currentUser?.username || ''),
+        claimedByName: isPMOrAdmin ? '' : (currentUser?.name || currentUser?.username || ''),
+        isUnassigned: isPMOrAdmin,
         deploymentStatus: 'Pending',
         isDhcp: 'No',
         bsnlPresent: 'Yes',
@@ -297,6 +303,56 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
                       onChange={(e) => handleChange('feNumber', e.target.value)}
                     />
                   </div>
+
+                  {/* Site Assignment & NOC Ownership */}
+                  <div className="modal-form-field full site-assignment-field">
+                    <label htmlFor="f_qa_claimedBy" className="field-title">
+                      Site Assignment & NOC Ownership
+                    </label>
+                    <select
+                      id="f_qa_claimedBy"
+                      className="field-input assignment-dropdown"
+                      value={formData.claimedBy || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (!val) {
+                          handleChange('claimedBy', '');
+                          handleChange('claimedByName', '');
+                          handleChange('isUnassigned', true);
+                        } else {
+                          const found = users.find(u => u.username === val);
+                          handleChange('claimedBy', val);
+                          handleChange('claimedByName', found ? (found.name || found.username) : val);
+                          handleChange('isUnassigned', false);
+                        }
+                      }}
+                    >
+                      <option value="">⚪ Unassigned (Open Pool - Available for any NOC to Take/Claim)</option>
+                      {currentUser && (
+                        <option value={currentUser.username}>
+                          👤 Assign to Myself ({currentUser.name || currentUser.username})
+                        </option>
+                      )}
+                      {users.filter(u => u.username !== currentUser?.username).length > 0 && (
+                        <optgroup label="Assign to Specific Team Member:">
+                          {users.filter(u => u.username !== currentUser?.username).map(u => (
+                            <option key={u.id || u.username} value={u.username}>
+                              🧑‍💻 {u.name ? `${u.name} (${u.username})` : u.username} {u.role ? `[${u.role.toUpperCase()}]` : ''}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                    {!formData.claimedBy ? (
+                      <div className="assignment-help-hint unassigned">
+                        🌐 <strong>Open Pool:</strong> This site will be added as unassigned so any NOC engineer can claim it using the <strong>"Take / Claim Site"</strong> button.
+                      </div>
+                    ) : (
+                      <div className="assignment-help-hint assigned">
+                        📌 <strong>Assigned to:</strong> {formData.claimedByName || formData.claimedBy}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -369,8 +425,8 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
                     </div>
                   </div>
 
-                  <div className="modal-form-field">
-                    <label className="field-title">Assigned NOC Engineer</label>
+                  <div className="modal-form-field full site-assignment-field">
+                    <label className="field-title">Assigned NOC Engineer & Ownership</label>
                     <select
                       className="field-input"
                       value={formData.claimedBy || ''}
@@ -379,15 +435,34 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
                         const found = users.find(u => u.username === selectedUname);
                         handleChange('claimedBy', selectedUname);
                         handleChange('claimedByName', found ? (found.name || found.username) : selectedUname);
+                        handleChange('isUnassigned', !selectedUname);
                       }}
                     >
-                      <option value="">⚪ Unassigned / Available</option>
-                      {users.map(u => (
-                        <option key={u.id || u.username} value={u.username}>
-                          👤 {u.name ? `${u.name} (${u.username})` : u.username}
+                      <option value="">⚪ Unassigned / Open Pool (Available for any NOC to Take/Claim)</option>
+                      {currentUser && (
+                        <option value={currentUser.username}>
+                          👤 Assign to Myself ({currentUser.name || currentUser.username})
                         </option>
-                      ))}
+                      )}
+                      {users.filter(u => u.username !== currentUser?.username).length > 0 && (
+                        <optgroup label="Assign to Specific Team Member:">
+                          {users.filter(u => u.username !== currentUser?.username).map(u => (
+                            <option key={u.id || u.username} value={u.username}>
+                              🧑‍💻 {u.name ? `${u.name} (${u.username})` : u.username} {u.role ? `[${u.role.toUpperCase()}]` : ''}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
                     </select>
+                    {!formData.claimedBy ? (
+                      <div className="assignment-help-hint unassigned">
+                        🌐 <strong>Open Pool:</strong> This site is unassigned so NOC engineers can claim it using the <strong>"Take / Claim Site"</strong> button.
+                      </div>
+                    ) : (
+                      <div className="assignment-help-hint assigned">
+                        📌 <strong>Assigned to:</strong> {formData.claimedByName || formData.claimedBy}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
