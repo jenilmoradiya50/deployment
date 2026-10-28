@@ -248,8 +248,13 @@ app.post('/api/records', authMiddleware, async (req, res) => {
     if (kind === 'Branch' && (!data.dpCode || !data.dpCode.trim())) {
       return res.status(400).json({ error: 'Branch DP Code is required' });
     }
-    if (kind === 'ATM' && (!data.atmId || !data.atmId.trim())) {
-      return res.status(400).json({ error: 'ATM ID is required' });
+    if (kind === 'ATM') {
+      if (!data.atmId || !data.atmId.trim()) {
+        return res.status(400).json({ error: 'ATM ID is required' });
+      }
+      if (!data.dpCode || !data.dpCode.trim()) {
+        return res.status(400).json({ error: 'Branch Base DP Code is required for ATM' });
+      }
     }
 
     const created = await db.createRecord(data, req.user);

@@ -205,6 +205,11 @@ export default function RecordCard({
           <div className="site-primary-row">
             <span className="site-kind-badge">{isBranch ? 'BRANCH' : 'ATM'}</span>
             <h3 className="site-title">{title}</h3>
+            {!isBranch && record.dpCode && (
+              <span className="base-dp-badge" title="Parent Branch Base DP">
+                🏛️ Base DP: <strong>{record.dpCode}</strong>
+              </span>
+            )}
             
             {/* Main Status Pill */}
             <span className={`site-status-pill ${status.toLowerCase().replace(' ', '-')}`}>
@@ -259,6 +264,13 @@ export default function RecordCard({
 
       {/* COMPACT SUMMARY VIEW (Always visible) */}
       <div className="site-compact-summary">
+        {!isBranch && record.dpCode && (
+          <div className="compact-field">
+            <span className="compact-lbl">Base Branch DP:</span>
+            <strong>{record.dpCode}</strong>
+          </div>
+        )}
+
         <div className="compact-field">
           <span className="compact-lbl">On-Site FE:</span>
           <strong>{record.feName || 'Not Assigned'}</strong>
@@ -358,6 +370,12 @@ export default function RecordCard({
               <span>Hardware & Deployment</span>
             </div>
             <div className="hardware-info-grid">
+              {!isBranch && (
+                <div className="hw-col">
+                  <span className="hw-lbl">Branch Base DP:</span>
+                  <code className="hw-val highlight">{record.dpCode || 'Not recorded'}</code>
+                </div>
+              )}
               <div className="hw-col">
                 <span className="hw-lbl">New SD-WAN S/N:</span>
                 <code className="hw-val highlight">{record.newDeviceSerial || 'Not recorded'}</code>

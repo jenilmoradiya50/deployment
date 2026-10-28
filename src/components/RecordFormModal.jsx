@@ -89,10 +89,17 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
       return;
     }
 
-    if (!isBranch && (!formData.atmId || !formData.atmId.trim())) {
-      setErrorMsg('ATM ID is required.');
-      document.getElementById('f_atmId')?.focus();
-      return;
+    if (!isBranch) {
+      if (!formData.atmId || !formData.atmId.trim()) {
+        setErrorMsg('ATM Terminal ID is required.');
+        document.getElementById('f_atmId')?.focus();
+        return;
+      }
+      if (!formData.dpCode || !formData.dpCode.trim()) {
+        setErrorMsg('Branch Base DP Code is required for ATM.');
+        document.getElementById('f_baseDpCode')?.focus();
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -229,21 +236,38 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
                       />
                     </div>
                   ) : (
-                    <div className="modal-form-field full">
-                      <label htmlFor="f_atmId" className="field-title required">
-                        ATM Terminal ID
-                      </label>
-                      <input
-                        id="f_atmId"
-                        type="text"
-                        className="field-input ip-code primary-highlight-input"
-                        placeholder="e.g. ATM-CN-9921"
-                        value={formData.atmId || ''}
-                        onChange={(e) => handleChange('atmId', e.target.value)}
-                        autoFocus
-                        required
-                      />
-                    </div>
+                    <>
+                      <div className="modal-form-field">
+                        <label htmlFor="f_atmId" className="field-title required">
+                          ATM Terminal ID
+                        </label>
+                        <input
+                          id="f_atmId"
+                          type="text"
+                          className="field-input ip-code primary-highlight-input"
+                          placeholder="e.g. ATM-CN-9921"
+                          value={formData.atmId || ''}
+                          onChange={(e) => handleChange('atmId', e.target.value)}
+                          autoFocus
+                          required
+                        />
+                      </div>
+
+                      <div className="modal-form-field">
+                        <label htmlFor="f_baseDpCode" className="field-title required">
+                          Branch Base DP Code
+                        </label>
+                        <input
+                          id="f_baseDpCode"
+                          type="text"
+                          className="field-input ip-code primary-highlight-input"
+                          placeholder="e.g. DP-4102 (Base Branch DP)"
+                          value={formData.dpCode || ''}
+                          onChange={(e) => handleChange('dpCode', e.target.value)}
+                          required
+                        />
+                      </div>
+                    </>
                   )}
 
                   <div className="modal-form-field">
@@ -391,20 +415,37 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
                       />
                     </div>
                   ) : (
-                    <div className="modal-form-field full">
-                      <label htmlFor="f_atmId" className="field-title required">
-                        ATM ID
-                      </label>
-                      <input
-                        id="f_atmId"
-                        type="text"
-                        className="field-input ip-code"
-                        placeholder="e.g. ATM-CN-9921"
-                        value={formData.atmId || ''}
-                        onChange={(e) => handleChange('atmId', e.target.value)}
-                        required
-                      />
-                    </div>
+                    <>
+                      <div className="modal-form-field">
+                        <label htmlFor="f_atmId" className="field-title required">
+                          ATM Terminal ID
+                        </label>
+                        <input
+                          id="f_atmId"
+                          type="text"
+                          className="field-input ip-code"
+                          placeholder="e.g. ATM-CN-9921"
+                          value={formData.atmId || ''}
+                          onChange={(e) => handleChange('atmId', e.target.value)}
+                          required
+                        />
+                      </div>
+
+                      <div className="modal-form-field">
+                        <label htmlFor="f_baseDpCode" className="field-title required">
+                          Branch Base DP Code
+                        </label>
+                        <input
+                          id="f_baseDpCode"
+                          type="text"
+                          className="field-input ip-code"
+                          placeholder="e.g. DP-4102 (Base Branch DP)"
+                          value={formData.dpCode || ''}
+                          onChange={(e) => handleChange('dpCode', e.target.value)}
+                          required
+                        />
+                      </div>
+                    </>
                   )}
 
                   <div className="modal-form-field">
