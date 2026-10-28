@@ -233,9 +233,9 @@ export default function App() {
     try {
       const res = await api.rejectTransfer(recordId);
       setRecords(prev => prev.map(r => r.id === recordId ? res.record : r));
-      showToast('Site transfer request declined.');
+      showToast(res.message || 'Site transfer request cancelled/declined.');
     } catch (err) {
-      showToast(err.message || 'Failed to decline transfer', 'error');
+      showToast(err.message || 'Failed to cancel/decline transfer', 'error');
     }
   };
 

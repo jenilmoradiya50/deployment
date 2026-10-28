@@ -364,11 +364,26 @@ app.post('/api/records/:id/reject-transfer', authMiddleware, async (req, res) =>
 
 app.delete('/api/records/:id', authMiddleware, async (req, res) => {
   try {
+    const existing = await db.getRecordById(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Record not found' });
+
+    const role = (req.user?.role || '').toLowerCase();
+    const uname = (req.user?.username || '').toLowerCase();
+    const isOwner = (existing.claimedBy || '').toLowerCase() === uname;
+    const isCreator = (existing.createdBy || '').toLowerCase() === uname;
+    const isAdminOrPM = role === 'admin' || role === 'pm' || uname.includes('admin');
+
+    if (!isAdminOrPM && !isOwner && !isCreator) {
+      return res.status(403).json({
+        error: 'Permission denied: You can only delete sites that you added or are assigned to you.'
+      });
+    }
+
     const success = await db.deleteRecord(req.params.id);
     if (!success) return res.status(404).json({ error: 'Record not found' });
     res.json({ message: 'Record deleted successfully', id: req.params.id });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to delete record' });
+    res.status(500).json({ error: 'Failed to delete record', details: err.message });
   }
 });
 

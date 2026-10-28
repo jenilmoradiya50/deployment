@@ -36,7 +36,9 @@ export default function RecordCard({
   // Transfer state
   const hasPendingTransfer = Boolean(record.transferRequestedBy);
   const isRequester = record.transferRequestedBy && record.transferRequestedBy.toLowerCase() === uname;
+  const isCreatedByMe = record.createdBy && record.createdBy.toLowerCase() === uname;
   const canEdit = isAdminOrPM || isClaimedByMe || isUnassigned;
+  const canDelete = isAdminOrPM || isClaimedByMe || isCreatedByMe;
 
   const updatedTime = record.updated || record.created;
   const formattedDate = updatedTime
@@ -76,7 +78,15 @@ export default function RecordCard({
     );
   };
 
-  const renderPingBadge = (pingStatus) => {
+  const renderPingBadge = (pingStatus, hasIp = true) => {
+    if (!hasIp) {
+      return (
+        <span className="ping-pill unconfigured" title="IP address not configured yet">
+          <span className="ping-dot"></span>
+          Not Configured
+        </span>
+      );
+    }
     const isOk = pingStatus === 'Yes';
     return (
       <span className={`ping-pill ${isOk ? 'ok' : 'fail'}`}>
@@ -89,30 +99,47 @@ export default function RecordCard({
   return (
     <article className={`site-record-card ${isExpanded ? 'is-expanded' : 'is-compact'} status-${status.toLowerCase().replace(' ', '-')}`}>
       {/* Handover / Transfer Pending Banner */}
-      {hasPendingTransfer && (isClaimedByMe || isAdminOrPM) && (
+      {hasPendingTransfer && (
         <div className="site-transfer-banner">
           <div className="transfer-banner-info">
             <span className="transfer-icon">⚠️</span>
             <div>
               <strong>Site Handover Request:</strong>
-              <span> <em>{record.transferRequestedByName || record.transferRequestedBy}</em> requested to take over this site.</span>
+              {isRequester ? (
+                <span> You requested to take over this site. Waiting for approval from {record.claimedByName || record.claimedBy || 'owner'}.</span>
+              ) : (
+                <span> <em>{record.transferRequestedByName || record.transferRequestedBy}</em> requested to take over this site.</span>
+              )}
             </div>
           </div>
           <div className="transfer-banner-actions">
-            <button
-              type="button"
-              className="accept-transfer-btn"
-              onClick={() => onAcceptTransfer && onAcceptTransfer(record.id)}
-            >
-              ✓ Allow & Transfer
-            </button>
-            <button
-              type="button"
-              className="decline-transfer-btn"
-              onClick={() => onRejectTransfer && onRejectTransfer(record.id)}
-            >
-              ✕ Decline
-            </button>
+            {isRequester ? (
+              <button
+                type="button"
+                className="cancel-handover-btn-banner"
+                onClick={() => onRejectTransfer && onRejectTransfer(record.id)}
+                title="Cancel your handover request"
+              >
+                ✕ Cancel My Request
+              </button>
+            ) : (isClaimedByMe || isAdminOrPM) ? (
+              <>
+                <button
+                  type="button"
+                  className="accept-transfer-btn"
+                  onClick={() => onAcceptTransfer && onAcceptTransfer(record.id)}
+                >
+                  ✓ Allow & Transfer
+                </button>
+                <button
+                  type="button"
+                  className="decline-transfer-btn"
+                  onClick={() => onRejectTransfer && onRejectTransfer(record.id)}
+                >
+                  ✕ Decline
+                </button>
+              </>
+            ) : null}
           </div>
         </div>
       )}
@@ -145,10 +172,20 @@ export default function RecordCard({
             </button>
           )}
 
-          {!isClaimedByMe && !isUnassigned && !isAdminOrPM && (
-            isRequester ? (
+          {isRequester ? (
+            <div className="handover-requester-actions">
               <span className="transfer-pending-pill">⏳ Handover Requested</span>
-            ) : (
+              <button
+                type="button"
+                className="cancel-handover-btn"
+                onClick={() => onRejectTransfer && onRejectTransfer(record.id)}
+                title="Cancel your handover request"
+              >
+                ✕ Cancel Request
+              </button>
+            </div>
+          ) : (
+            !isClaimedByMe && !isUnassigned && !isAdminOrPM && (
               <button
                 type="button"
                 className="request-transfer-btn"
@@ -198,7 +235,7 @@ export default function RecordCard({
             </button>
           )}
 
-          {isAdminOrPM && (
+          {canDelete && (
             <button
               type="button"
               className="card-action-icon delete-btn"
@@ -240,13 +277,13 @@ export default function RecordCard({
             </span>
           )}
           <span className={`circuit-mini-badge ${record.bsnlPresent === 'No' ? 'not-present' : ''}`} title={`BSNL IP: ${record.bsnlIp || 'N/A'}`}>
-            BSNL: {record.bsnlPresent === 'No' ? '⚪ N/A' : (record.bsnlPing === 'Yes' ? '🟢 OK' : '🔴')}
+            BSNL: {record.bsnlPresent === 'No' ? '⚪ N/A' : (!record.bsnlIp ? '⚪ No IP' : (record.bsnlPing === 'Yes' ? '🟢 OK' : '🔴 Ping Failed'))}
           </span>
           <span className={`circuit-mini-badge ${record.jioPresent === 'No' ? 'not-present' : ''}`} title={`Jio IP: ${record.jioIp || 'N/A'}`}>
-            Jio: {record.jioPresent === 'No' ? '⚪ N/A' : (record.jioPing === 'Yes' ? '🟢 OK' : '🔴')}
+            Jio: {record.jioPresent === 'No' ? '⚪ N/A' : (!record.jioIp ? '⚪ No IP' : (record.jioPing === 'Yes' ? '🟢 OK' : '🔴 Ping Failed'))}
           </span>
           <span className={`circuit-mini-badge ${record.airtelPresent === 'No' ? 'not-present' : ''}`} title={`Airtel IP: ${record.airtelIp || 'N/A'}`}>
-            Airtel{record.airtelIs4G === 'Yes' ? ' (4G)' : ''}: {record.airtelPresent === 'No' ? '⚪ N/A' : (record.airtelPing === 'Yes' ? '🟢 OK' : '🔴')}
+            Airtel{record.airtelIs4G === 'Yes' ? ' (4G)' : ''}: {record.airtelPresent === 'No' ? '⚪ N/A' : (!record.airtelIp && !record.airtelLoopbackIp ? '⚪ No IP' : (record.airtelPing === 'Yes' ? '🟢 OK' : '🔴 Ping Failed'))}
           </span>
         </div>
 
@@ -412,7 +449,7 @@ export default function RecordCard({
                   {record.bsnlPresent === 'No' ? (
                     <span className="not-present-badge">Not Present</span>
                   ) : (
-                    renderPingBadge(record.bsnlPing)
+                    renderPingBadge(record.bsnlPing, Boolean(record.bsnlIp && record.bsnlIp.trim()))
                   )}
                 </div>
                 <div className="circuit-chips-col">
@@ -422,6 +459,9 @@ export default function RecordCard({
                     <>
                       {renderIpChip('IP', record.bsnlIp, `${record.id}-bsnlip`)}
                       {renderIpChip('GW', record.bsnlGateway, `${record.id}-bsnlgw`)}
+                      {!record.bsnlIp && !record.bsnlGateway && (
+                        <span className="dim-sub-text">No IP/Gateway configured</span>
+                      )}
                     </>
                   )}
                 </div>
@@ -434,7 +474,7 @@ export default function RecordCard({
                   {record.jioPresent === 'No' ? (
                     <span className="not-present-badge">Not Present</span>
                   ) : (
-                    renderPingBadge(record.jioPing)
+                    renderPingBadge(record.jioPing, Boolean(record.jioIp && record.jioIp.trim()))
                   )}
                 </div>
                 <div className="circuit-chips-col">
@@ -444,6 +484,9 @@ export default function RecordCard({
                     <>
                       {renderIpChip('IP', record.jioIp, `${record.id}-jioip`)}
                       {renderIpChip('GW', record.jioGateway, `${record.id}-jiogw`)}
+                      {!record.jioIp && !record.jioGateway && (
+                        <span className="dim-sub-text">No IP/Gateway configured</span>
+                      )}
                     </>
                   )}
                 </div>
@@ -458,7 +501,10 @@ export default function RecordCard({
                   {record.airtelPresent === 'No' ? (
                     <span className="not-present-badge">Not Present</span>
                   ) : (
-                    renderPingBadge(record.airtelPing)
+                    renderPingBadge(
+                      record.airtelPing,
+                      Boolean((record.airtelIp && record.airtelIp.trim()) || (record.airtelIs4G === 'Yes' && record.airtelLoopbackIp && record.airtelLoopbackIp.trim()))
+                    )
                   )}
                 </div>
                 <div className="circuit-chips-col">
@@ -471,6 +517,9 @@ export default function RecordCard({
                       )}
                       {renderIpChip('IP', record.airtelIp, `${record.id}-airtelip`)}
                       {renderIpChip('GW', record.airtelGateway, `${record.id}-airtelgw`)}
+                      {!record.airtelIp && !record.airtelGateway && !record.airtelLoopbackIp && (
+                        <span className="dim-sub-text">No IP/Gateway configured</span>
+                      )}
                     </>
                   )}
                 </div>

@@ -2533,3 +2533,493 @@ input, select, textarea {
 .text-rose {
   color: #dc2626;
 }
+
+/* ========================================================
+   11. EXPANDED SITE CARD TECHNICAL PANELS & MOBILE STYLING
+======================================================== */
+
+/* Handover Actions & Cancel Request */
+.handover-requester-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cancel-handover-btn {
+  background: #ffffff;
+  color: #dc2626;
+  border: 1px solid #fca5a5;
+  padding: 3px 9px;
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cancel-handover-btn:hover {
+  background: #fee2e2;
+  border-color: #f87171;
+  color: #b91c1c;
+}
+
+.cancel-handover-btn-banner {
+  background: #dc2626;
+  color: #ffffff;
+  border: none;
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.cancel-handover-btn-banner:hover {
+  background: #b91c1c;
+}
+
+/* Neutral Unconfigured Ping Badge */
+.ping-pill.unconfigured {
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+}
+
+.ping-pill.unconfigured .ping-dot {
+  background: #94a3b8;
+}
+
+/* Expanded Card Technical Container */
+.site-expanded-details {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed #e2e8f0;
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Section Panel Card Container */
+.site-section-panel {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.site-section-panel.hardware-panel {
+  border-left: 3px solid #3b82f6;
+}
+
+.site-section-panel.lan-panel {
+  border-left: 3px solid #6366f1;
+}
+
+.site-section-panel.circuits-panel {
+  border-left: 3px solid #0ea5e9;
+}
+
+.site-section-panel.checklist-panel {
+  border-left: 3px solid #10b981;
+}
+
+.site-section-panel.notes-panel {
+  border-left: 3px solid #f59e0b;
+}
+
+/* Sub-panel Header */
+.panel-header-sub {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #edf2f7;
+  gap: 8px;
+}
+
+/* Hardware & LAN Responsive Info Grids */
+.hardware-info-grid,
+.lan-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px 14px;
+}
+
+.hw-col,
+.lan-col {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  background: #ffffff;
+  padding: 6px 10px;
+  border: 1px solid #edf2f7;
+  border-radius: 5px;
+}
+
+.hw-lbl,
+.lan-lbl {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.hw-val,
+.lan-val {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.hw-val.highlight {
+  color: #1d4ed8;
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.lan-val code,
+.hw-val code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.uat-tag-ok {
+  color: #15803d;
+  font-size: 12px;
+}
+
+.uat-tag-pending {
+  color: #b45309;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.vlan-tag-active {
+  color: #4338ca;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+/* Secondary LANs flow */
+.secondary-lans-block {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px dashed #e2e8f0;
+}
+
+.secondary-lan-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.chips-flow-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.secondary-ip-tag {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.secondary-ip-tag strong {
+  font-family: var(--font-mono);
+  color: #1e3a8a;
+}
+
+.sec-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* WAN ISP Circuits Stack */
+.circuits-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.circuit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 8px 12px;
+  flex-wrap: wrap;
+}
+
+.circuit-id-col {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.isp-badge {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.isp-badge.bsnl {
+  background: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+}
+
+.isp-badge.jio {
+  background: #fdf2f8;
+  color: #9d174d;
+  border: 1px solid #fbcfe8;
+}
+
+.isp-badge.airtel {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.circuit-chips-col {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* IP Chip Component */
+.ip-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.ip-chip-label {
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ip-chip-val {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.ip-copy-trigger {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--primary-blue);
+  font-size: 12px;
+  padding: 0 2px;
+  line-height: 1;
+  opacity: 0.7;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.ip-copy-trigger:hover {
+  opacity: 1;
+  transform: scale(1.15);
+}
+
+/* Acceptance & Operations Checklist Badges */
+.checklist-badges-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.check-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #475569;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: all 0.15s ease;
+}
+
+.check-chip.done {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #065f46;
+  font-weight: 700;
+}
+
+.check-chip.pending {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #64748b;
+}
+
+/* Remarks & Notes */
+.site-notes-text {
+  font-size: 13px;
+  color: #334155;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 8px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Card Footer */
+.site-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #edf2f7;
+  font-size: 12px;
+  color: var(--text-muted);
+  flex-wrap: wrap;
+}
+
+.card-text-action {
+  background: none;
+  border: none;
+  color: var(--primary-blue);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.card-text-action:hover {
+  background: #eff6ff;
+  text-decoration: underline;
+}
+
+/* Mobile & Touch Viewport Adaptations */
+@media (max-width: 768px) {
+  .site-record-card {
+    padding: 12px 14px;
+  }
+
+  .site-card-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .site-primary-row {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .site-title {
+    font-size: 16px;
+  }
+
+  .site-compact-summary {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  .compact-circuits-row {
+    width: 100%;
+    gap: 6px;
+  }
+
+  .card-status-quick-buttons {
+    width: 100%;
+    display: flex;
+    justify-content: flex-start;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .status-action-btn {
+    flex: 1 1 calc(50% - 6px);
+    justify-content: center;
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  .hardware-info-grid,
+  .lan-info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .circuit-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .circuit-chips-col {
+    width: 100%;
+  }
+
+  .checklist-badges-grid {
+    gap: 6px;
+  }
+
+  .check-chip {
+    font-size: 11px;
+    padding: 3px 8px;
+  }
+
+  .site-claim-strip {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .claim-right {
+    width: 100%;
+    display: flex;
+    justify-content: flex-start;
+  }
+}
