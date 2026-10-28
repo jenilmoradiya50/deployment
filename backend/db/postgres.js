@@ -188,7 +188,7 @@ async function initDatabase() {
           password_hash VARCHAR(255) NOT NULL,
           name VARCHAR(150) NOT NULL,
           phone VARCHAR(50) DEFAULT '',
-          role VARCHAR(50) NOT NULL DEFAULT 'field_engineer',
+          role VARCHAR(50) NOT NULL DEFAULT 'noc',
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         );
@@ -407,9 +407,10 @@ const db = {
   },
 
   // Admin: Create new user
-  async createUser({ username, password, name, phone, role = 'field_engineer' }) {
+  async createUser({ username, password, name, phone, role = 'noc' }) {
     await initDatabase();
     const cleanUser = String(username || '').trim();
+    const resolvedRole = (role === 'field_engineer' || !role) ? 'noc' : role;
     if (!cleanUser || !password) {
       throw new Error('Username and password are required');
     }
@@ -428,7 +429,7 @@ const db = {
         INSERT INTO users (id, username, password_hash, name, phone, role)
         VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING id, username, name, phone, role, created_at
-      `, [newId, cleanUser, hashedPassword, name || cleanUser, phone || '', role]);
+      `, [newId, cleanUser, hashedPassword, name || cleanUser, phone || '', resolvedRole]);
       return res.rows[0];
     }
 
@@ -443,7 +444,7 @@ const db = {
       password_hash: hashedPassword,
       name: name || cleanUser,
       phone: phone || '',
-      role,
+      role: resolvedRole,
       created_at: new Date().toISOString()
     };
     memUsers.push(newUser);

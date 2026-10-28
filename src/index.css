@@ -1539,7 +1539,7 @@ input, select, textarea {
 }
 
 .role-chip.admin { background: #dbeafe; color: #1e40af; }
-.role-chip.fe { background: #fef3c7; color: #92400e; }
+.role-chip.noc, .role-chip.fe { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; font-weight: 700; }
 
 .danger-text-btn {
   color: var(--rose);

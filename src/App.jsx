@@ -284,7 +284,7 @@ export default function App() {
               <span className="admin-badge-icon">🛡️</span>
               <div>
                 <strong>Administrator Console:</strong>
-                <span> Logged in as <em>{currentUser?.name || currentUser?.username}</em>. You can register Field Engineers, set their login passwords, and manage bank site assignments.</span>
+                <span> Logged in as <em>{currentUser?.name || currentUser?.username}</em>. You can register NOC Engineers, set their login passwords, and manage bank site assignments.</span>
               </div>
             </div>
             <div className="admin-strip-actions">
@@ -293,7 +293,7 @@ export default function App() {
                 className="admin-strip-action-btn"
                 onClick={() => setIsUserMgmtOpen(true)}
               >
-                👥 Add User / Manage Team
+                👥 Add NOC / Manage Team
               </button>
             </div>
           </div>

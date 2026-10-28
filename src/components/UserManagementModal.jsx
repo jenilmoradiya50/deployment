@@ -12,7 +12,7 @@ export default function UserManagementModal({ isOpen, onClose, onNotify }) {
   const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [role, setRole] = useState('field_engineer');
+  const [role, setRole] = useState('noc');
   const [errorMsg, setErrorMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -112,7 +112,7 @@ export default function UserManagementModal({ isOpen, onClose, onNotify }) {
         <div className="modal-form-header">
           <div className="header-badge-title">
             <span className="modal-tag">ADMINISTRATION</span>
-            <h2>Field Engineer & User Management</h2>
+            <h2>NOC Engineers & User Management</h2>
           </div>
           <button type="button" className="modal-close-button" onClick={onClose}>✕</button>
         </div>
@@ -121,15 +121,15 @@ export default function UserManagementModal({ isOpen, onClose, onNotify }) {
           {/* Top Bar with Add User Toggle */}
           <div className="user-mgmt-top-bar">
             <div>
-              <h3>👥 User Accounts ({users.length})</h3>
-              <p className="sub-text">Create Field Engineer logins, set passwords, and manage administrative access.</p>
+              <h3>👥 NOC & Admin Accounts ({users.length})</h3>
+              <p className="sub-text">Authorize NOC Engineers to monitor sites and coordinate with on-site Field Engineers (FE).</p>
             </div>
             <button
               type="button"
               className="primary-btn-sm"
               onClick={() => { setShowAddForm(!showAddForm); setErrorMsg(''); }}
             >
-              {showAddForm ? '▲ Hide Add Form' : '＋ Add New User'}
+              {showAddForm ? '▲ Hide Add Form' : '＋ Add NOC Account'}
             </button>
           </div>
 
@@ -137,8 +137,8 @@ export default function UserManagementModal({ isOpen, onClose, onNotify }) {
           {showAddForm && (
             <form onSubmit={handleCreateUser} className="add-user-card">
               <div className="add-user-card-header">
-                <h4>➕ Create New User / Field Engineer</h4>
-                <span className="card-badge-info">Set username & password for the user</span>
+                <h4>➕ Create New NOC User Account</h4>
+                <span className="card-badge-info">Set username & password for NOC staff</span>
               </div>
               {errorMsg && <div className="modal-error-alert">{errorMsg}</div>}
 
@@ -148,7 +148,7 @@ export default function UserManagementModal({ isOpen, onClose, onNotify }) {
                   <input
                     type="text"
                     className="field-input"
-                    placeholder="e.g. FE_Ramesh or Engineer1"
+                    placeholder="e.g. NOC_Ramesh or NOC_Team1"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     required
@@ -198,7 +198,7 @@ export default function UserManagementModal({ isOpen, onClose, onNotify }) {
                 </div>
 
                 <div className="modal-form-field">
-                  <label className="field-title">Mobile Number</label>
+                  <label className="field-title">Contact Phone</label>
                   <input
                     type="tel"
                     className="field-input"
@@ -215,7 +215,7 @@ export default function UserManagementModal({ isOpen, onClose, onNotify }) {
                     value={role}
                     onChange={(e) => setRole(e.target.value)}
                   >
-                    <option value="field_engineer">Field Engineer (Can take & update sites)</option>
+                    <option value="noc">NOC Engineer (Coordinates with FE, claims & updates sites)</option>
                     <option value="admin">Administrator (Full Access & User Management)</option>
                   </select>
                 </div>
@@ -223,7 +223,7 @@ export default function UserManagementModal({ isOpen, onClose, onNotify }) {
 
               <div className="user-form-actions">
                 <button type="submit" className="save-btn" disabled={isSubmitting}>
-                  {isSubmitting ? 'Creating User...' : '＋ Create & Authorize User'}
+                  {isSubmitting ? 'Creating NOC Account...' : '＋ Create & Authorize NOC Account'}
                 </button>
                 <button
                   type="button"
@@ -300,8 +300,8 @@ export default function UserManagementModal({ isOpen, onClose, onNotify }) {
                       <td>{u.name || '—'}</td>
                       <td>{u.phone || '—'}</td>
                       <td>
-                        <span className={`role-chip ${u.role === 'admin' ? 'admin' : 'fe'}`}>
-                          {u.role === 'admin' ? 'Administrator' : 'Field Engineer'}
+                        <span className={`role-chip ${u.role === 'admin' ? 'admin' : 'noc'}`}>
+                          {u.role === 'admin' ? 'Administrator' : 'NOC Engineer'}
                         </span>
                       </td>
                       <td>{u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>

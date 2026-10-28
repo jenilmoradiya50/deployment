@@ -45,7 +45,7 @@ export default function Header({
               type="button"
               className="header-btn admin-highlight"
               onClick={onOpenUserManagement}
-              title="Manage System Users and Field Engineers"
+              title="Manage NOC Engineers and Admin Users"
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
@@ -53,7 +53,7 @@ export default function Header({
                 <line x1="19" y1="8" x2="19" y2="14"></line>
                 <line x1="22" y1="11" x2="16" y2="11"></line>
               </svg>
-              👥 Add / Manage Users
+              👥 Manage NOC Users
             </button>
           )}
 
@@ -93,7 +93,7 @@ export default function Header({
             </div>
             <div className="user-details">
               <span className="user-name">{currentUser?.name || username}</span>
-              <span className="user-role-pill">{userRole === 'admin' ? 'ADMIN' : 'FE'}</span>
+              <span className="user-role-pill">{isAdmin ? 'ADMIN' : 'NOC'}</span>
             </div>
             <button
               type="button"
