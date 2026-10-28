@@ -46,21 +46,32 @@ CREATE TABLE IF NOT EXISTS records (
   atm_ip VARCHAR(50) DEFAULT '',
   atm_gateway VARCHAR(50) DEFAULT '',
 
-  -- BSNL Circuit
+  -- DHCP Status
+  is_dhcp VARCHAR(10) DEFAULT 'No',
+
+  -- BSNL Circuit (Optional / Present Flag)
+  bsnl_present VARCHAR(10) DEFAULT 'Yes',
   bsnl_ip VARCHAR(50) DEFAULT '',
   bsnl_gateway VARCHAR(50) DEFAULT '',
   bsnl_ping VARCHAR(10) DEFAULT 'No',
 
-  -- Jio Circuit
+  -- Jio Circuit (Optional / Present Flag)
+  jio_present VARCHAR(10) DEFAULT 'Yes',
   jio_ip VARCHAR(50) DEFAULT '',
   jio_gateway VARCHAR(50) DEFAULT '',
   jio_ping VARCHAR(10) DEFAULT 'No',
 
-  -- Airtel & CE Circuit
+  -- Airtel Circuit (4G Toggle & Loopback IP)
+  airtel_present VARCHAR(10) DEFAULT 'Yes',
+  airtel_is_4g VARCHAR(10) DEFAULT 'No',
+  airtel_loopback_ip VARCHAR(50) DEFAULT '',
   airtel_ip VARCHAR(50) DEFAULT '',
   airtel_gateway VARCHAR(50) DEFAULT '',
   ce_ip VARCHAR(50) DEFAULT '',
   airtel_ping VARCHAR(10) DEFAULT 'No',
+
+  -- Deployment Status (Pending, Completed, On Hold, Failed)
+  deployment_status VARCHAR(30) DEFAULT 'Pending',
 
   -- SD-WAN Handover & Checklist
   configuration VARCHAR(50) DEFAULT 'Not completed',
@@ -72,9 +83,12 @@ CREATE TABLE IF NOT EXISTS records (
   cables_connected VARCHAR(30) DEFAULT 'Not connected',
   working VARCHAR(10) DEFAULT 'No',
 
-  -- Site Claim / Ownership
+  -- Site Claim & Handover Request
   claimed_by VARCHAR(100) DEFAULT '',
   claimed_by_name VARCHAR(150) DEFAULT '',
+  transfer_requested_by VARCHAR(100) DEFAULT '',
+  transfer_requested_by_name VARCHAR(150) DEFAULT '',
+  transfer_requested_at TIMESTAMP WITH TIME ZONE,
 
   notes TEXT DEFAULT '',
   created_by VARCHAR(100) DEFAULT 'Admin@Canara',

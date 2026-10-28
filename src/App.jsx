@@ -135,7 +135,29 @@ export default function App() {
     return records; // 'All' sites mixed
   }, [kind, branchRecords, atmRecords, records]);
 
-  const doneCount = useMemo(() => currentKindRecords.filter(r => r.working === 'Yes').length, [currentKindRecords]);
+  // Dynamic KPI Status Statistics (Total, Completed, Pending, On Hold, Failed)
+  const statusStats = useMemo(() => {
+    let completed = 0;
+    let pending = 0;
+    let onHold = 0;
+    let failed = 0;
+
+    currentKindRecords.forEach(r => {
+      const st = r.deploymentStatus || (r.working === 'Yes' ? 'Completed' : (r.working === 'No' ? 'Failed' : 'Pending'));
+      if (st === 'Completed') completed++;
+      else if (st === 'On Hold') onHold++;
+      else if (st === 'Failed') failed++;
+      else pending++;
+    });
+
+    return {
+      total: currentKindRecords.length,
+      completed,
+      pending,
+      onHold,
+      failed
+    };
+  }, [currentKindRecords]);
 
   // Filtered displayed records
   const displayedRecords = useMemo(() => {
@@ -143,10 +165,17 @@ export default function App() {
     const curUname = (currentUser?.username || '').toLowerCase();
 
     return currentKindRecords.filter(r => {
-      // Status Filter
-      if (statusFilter === 'working' && r.working !== 'Yes') return false;
-      if (statusFilter === 'notWorking' && r.working !== 'No') return false;
-      if (statusFilter === 'pending' && (r.working === 'Yes' || r.working === 'No')) return false;
+      // Status Filter (All, Pending, Completed, On Hold, Failed)
+      if (statusFilter !== 'all') {
+        const recStatus = r.deploymentStatus || (r.working === 'Yes' ? 'Completed' : (r.working === 'No' ? 'Failed' : 'Pending'));
+        if (statusFilter === 'pending' && recStatus !== 'Pending') return false;
+        if (statusFilter === 'completed' && recStatus !== 'Completed') return false;
+        if (statusFilter === 'onHold' && recStatus !== 'On Hold') return false;
+        if (statusFilter === 'failed' && recStatus !== 'Failed') return false;
+        // Legacy fallback
+        if (statusFilter === 'working' && r.working !== 'Yes') return false;
+        if (statusFilter === 'notWorking' && r.working !== 'No') return false;
+      }
 
       // Ownership Filter
       if (ownershipFilter === 'mine') {
@@ -210,6 +239,17 @@ export default function App() {
     }
   };
 
+  // Fast Status Transition Handler (Completed, Pending, On Hold, Failed)
+  const handleStatusChange = async (recordId, newStatus) => {
+    try {
+      const res = await api.updateRecordStatus(recordId, newStatus);
+      setRecords(prev => prev.map(r => r.id === recordId ? res.record : r));
+      showToast(`Site status updated to "${newStatus}"!`);
+    } catch (err) {
+      showToast('Could not update status: ' + err.message, 'error');
+    }
+  };
+
   // Record CRUD Handlers
   const handleSaveRecord = async (formData) => {
     try {
@@ -220,7 +260,7 @@ export default function App() {
       } else {
         const created = await api.createRecord(formData);
         setRecords(prev => [created, ...prev]);
-        showToast(`Created new ${created.kind || 'site'} record in database!`);
+        showToast(`Created ${created.kind} (${created.dpCode || created.atmId}) and moved to Pending queue!`);
       }
       setIsFormOpen(false);
       setRecordToEdit(null);
@@ -366,9 +406,13 @@ export default function App() {
 
         <SummaryCards
           kind={kind}
-          totalKind={currentKindRecords.length}
-          doneKind={doneCount}
-          totalAll={records.length}
+          total={statusStats.total}
+          completed={statusStats.completed}
+          pending={statusStats.pending}
+          onHold={statusStats.onHold}
+          failed={statusStats.failed}
+          activeFilter={statusFilter}
+          onSelectStatus={(st) => setStatusFilter(st)}
         />
 
         {/* Feed of Site Records */}
@@ -386,6 +430,7 @@ export default function App() {
                   record={record}
                   currentUser={currentUser}
                   onClaim={handleClaimSite}
+                  onStatusChange={handleStatusChange}
                   onRequestTransfer={handleRequestTransfer}
                   onAcceptTransfer={handleAcceptTransfer}
                   onRejectTransfer={handleRejectTransfer}

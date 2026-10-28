@@ -2200,3 +2200,336 @@ input, select, textarea {
   color: var(--primary-blue);
   font-weight: 700;
 }
+
+/* ========================================================
+   10. ISP FLEXIBILITY, 4G LOOPBACK, QUICK-ADD &
+       STATUS LIFECYCLE (PENDING, COMPLETED, ON HOLD, FAILED)
+======================================================== */
+
+/* Quick Add Window Layout */
+.quick-add-window {
+  width: 95vw;
+  max-width: 600px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45);
+  background: #ffffff;
+}
+
+.quick-add-body {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.quick-add-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  font-size: 13px;
+  color: #1e3a8a;
+}
+
+.quick-add-banner .banner-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.quick-add-banner p {
+  margin: 4px 0 0 0;
+  font-size: 12px;
+  color: #3b82f6;
+  line-height: 1.4;
+}
+
+.primary-highlight-input {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+  border: 2px solid #93c5fd;
+  background: #fdfefe;
+}
+
+.primary-highlight-input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+}
+
+.field-hint {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.quick-add-toggle-row {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0;
+}
+
+.switch-full-form-btn {
+  background: none;
+  border: 1px dashed #cbd5e1;
+  color: var(--primary-blue);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.switch-full-form-btn:hover {
+  background: #f1f5f9;
+  border-color: var(--primary-blue);
+}
+
+.quick-submit-btn {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+/* DHCP & Airtel 4G toggles */
+.dhcp-toggle-card, .airtel-4g-toggle-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+}
+
+.checkbox-control-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  user-select: none;
+}
+
+.checkbox-control-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary-blue);
+  cursor: pointer;
+}
+
+.loopback-field-highlight {
+  background: #eff6ff;
+  border: 1px solid #93c5fd;
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+
+/* ISP Availability Toggle */
+.isp-availability-toggle {
+  margin-left: auto;
+}
+
+.isp-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.isp-toggle-label input[type="checkbox"] {
+  accent-color: var(--primary-blue);
+}
+
+.isp-not-present-notice {
+  padding: 12px 14px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-style: italic;
+}
+
+.not-present-badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.dim-sub-text {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Circuit Mini Badges in Compact View */
+.circuit-mini-badge.not-present {
+  opacity: 0.6;
+  color: #64748b;
+  border-style: dashed;
+}
+
+.circuit-mini-badge.dhcp-badge {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+.dhcp-pill-badge {
+  background: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 4px;
+  margin-left: auto;
+}
+
+/* Site Card Lifecycle Status Actions */
+.card-status-quick-buttons {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.status-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1px solid transparent;
+}
+
+.status-action-btn.complete-btn {
+  background: #f0fdf4;
+  color: #15803d;
+  border-color: #86efac;
+}
+.status-action-btn.complete-btn:hover {
+  background: #16a34a;
+  color: #ffffff;
+}
+
+.status-action-btn.hold-btn {
+  background: #fefce8;
+  color: #854d0e;
+  border-color: #fde047;
+}
+.status-action-btn.hold-btn:hover {
+  background: #ca8a04;
+  color: #ffffff;
+}
+
+.status-action-btn.fail-btn {
+  background: #fef2f2;
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+.status-action-btn.fail-btn:hover {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.status-action-btn.pending-btn {
+  background: #f1f5f9;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+.status-action-btn.pending-btn:hover {
+  background: #64748b;
+  color: #ffffff;
+}
+
+/* Status Pills on Card Header */
+.site-status-pill.completed {
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #86efac;
+}
+.site-status-pill.pending {
+  background: #fefce8;
+  color: #854d0e;
+  border: 1px solid #fde047;
+}
+.site-status-pill.on-hold {
+  background: #faf5ff;
+  color: #7e22ce;
+  border: 1px solid #d8b4fe;
+}
+.site-status-pill.failed {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+}
+
+/* Status Choice Pills in Form */
+.status-pill-choice.completed.active {
+  background: #16a34a !important;
+  border-color: #16a34a !important;
+  color: #ffffff !important;
+}
+.status-pill-choice.pending.active {
+  background: #d97706 !important;
+  border-color: #d97706 !important;
+  color: #ffffff !important;
+}
+.status-pill-choice.on-hold.active {
+  background: #7e22ce !important;
+  border-color: #7e22ce !important;
+  color: #ffffff !important;
+}
+.status-pill-choice.failed.active {
+  background: #dc2626 !important;
+  border-color: #dc2626 !important;
+  color: #ffffff !important;
+}
+
+/* KPI Summary Card Active Filters & Colors */
+.kpi-card {
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+}
+.kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+.kpi-card.is-active-filter {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
+  background: #f8fafc;
+}
+
+.kpi-icon-badge.hold {
+  background: #faf5ff;
+  color: #7e22ce;
+}
+.kpi-icon-badge.fail {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.text-purple {
+  color: #7e22ce;
+}
+.text-rose {
+  color: #dc2626;
+}

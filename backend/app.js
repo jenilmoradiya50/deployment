@@ -222,8 +222,8 @@ app.delete(['/api/admin/users/:id', '/api/users/:id'], authMiddleware, requireAd
 // -------------------------------------------------------------
 app.get('/api/records', authMiddleware, async (req, res) => {
   try {
-    const { kind, working, search, claimedBy } = req.query;
-    const records = await db.getAllRecords({ kind, working, search, claimedBy });
+    const { kind, working, status, search, claimedBy } = req.query;
+    const records = await db.getAllRecords({ kind, working, status, search, claimedBy });
     res.json(records);
   } catch (err) {
     res.status(500).json({ error: 'Failed to query records', details: err.message });
@@ -281,6 +281,35 @@ app.put('/api/records/:id', authMiddleware, async (req, res) => {
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: 'Failed to update record', details: err.message });
+  }
+});
+
+// Fast Deployment Status Update: Completed, Pending, On Hold, Failed
+app.patch('/api/records/:id/status', authMiddleware, async (req, res) => {
+  try {
+    const { status } = req.body || {};
+    if (!status) return res.status(400).json({ error: 'Status is required' });
+
+    const existing = await db.getRecordById(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Record not found' });
+
+    const role = (req.user?.role || '').toLowerCase();
+    const uname = (req.user?.username || '').toLowerCase();
+    const isOwner = (existing.claimedBy || '').toLowerCase() === uname;
+    const isUnassigned = !existing.claimedBy;
+    const canEdit = isOwner || isUnassigned || role === 'admin' || role === 'pm';
+
+    if (!canEdit) {
+      return res.status(403).json({
+        error: `Only the assigned NOC (${existing.claimedByName || existing.claimedBy}), PM, or Admin can update site status.`
+      });
+    }
+
+    const updated = await db.updateRecordStatus(req.params.id, status, req.user);
+    if (!updated) return res.status(404).json({ error: 'Record not found' });
+    res.json({ message: `Site status updated to ${status}`, record: updated });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update site status', details: err.message });
   }
 });
 
@@ -348,19 +377,21 @@ app.get('/api/export', optionalAuth, async (req, res) => {
     const format = req.query.format || 'json';
     const kind = req.query.kind;
     const working = req.query.working;
+    const status = req.query.status;
     const claimedBy = req.query.claimedBy || req.query.user;
-    const records = await db.getAllRecords({ kind, working, claimedBy });
+    const records = await db.getAllRecords({ kind, working, status, claimedBy });
 
     if (format === 'csv') {
       const fields = [
         'id', 'kind', 'dpCode', 'atmId', 'feName', 'feNumber',
+        'deploymentStatus', 'working',
         'newDeviceSerial', 'oldDeviceModel', 'oldDeviceSerial',
         'vlanConfigured', 'vlanDetails', 'vlanRemoved',
-        'primaryLanIp', 'lanIpPrefix', 'primaryLanGateway',
-        'bsnlIp', 'bsnlGateway', 'bsnlPing',
-        'jioIp', 'jioGateway', 'jioPing',
-        'airtelIp', 'airtelGateway', 'ceIp', 'airtelPing',
-        'configuration', 'csAdded', 'deviceOnline', 'mailSent', 'dcMail', 'drcMail', 'cablesConnected', 'working',
+        'primaryLanIp', 'lanIpPrefix', 'primaryLanGateway', 'isDhcp',
+        'bsnlPresent', 'bsnlIp', 'bsnlGateway', 'bsnlPing',
+        'jioPresent', 'jioIp', 'jioGateway', 'jioPing',
+        'airtelPresent', 'airtelIs4G', 'airtelLoopbackIp', 'airtelIp', 'airtelGateway', 'airtelPing',
+        'configuration', 'csAdded', 'deviceOnline', 'mailSent', 'dcMail', 'drcMail', 'cablesConnected',
         'uatSubmitted', 'uatFormNo', 'claimedBy', 'claimedByName',
         'createdBy', 'updatedBy', 'created', 'updated'
       ];

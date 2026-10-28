@@ -18,9 +18,11 @@ export default function ImportExportModal({
   // Compute matched records count based on export filters
   const matchedRecords = records.filter(r => {
     if (filterKind !== 'All' && r.kind !== filterKind) return false;
-    if (filterStatus === 'working' && r.working !== 'Yes') return false;
-    if (filterStatus === 'notWorking' && r.working !== 'No') return false;
-    if (filterStatus === 'pending' && (r.working === 'Yes' || r.working === 'No')) return false;
+    const recStatus = r.deploymentStatus || (r.working === 'Yes' ? 'Completed' : (r.working === 'No' ? 'Failed' : 'Pending'));
+    if (filterStatus !== 'all') {
+      if (filterStatus === 'onHold' && recStatus !== 'On Hold') return false;
+      else if (filterStatus !== 'onHold' && recStatus.toLowerCase() !== filterStatus.toLowerCase()) return false;
+    }
     if (filterUser !== 'all' && (r.claimedBy || '').toLowerCase() !== filterUser.toLowerCase()) return false;
     return true;
   });
@@ -65,16 +67,17 @@ export default function ImportExportModal({
               </div>
 
               <div className="modal-form-field">
-                <label className="field-title">Working Status</label>
+                <label className="field-title">Deployment Status</label>
                 <select
                   className="field-input"
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value)}
                 >
                   <option value="all">All Statuses</option>
-                  <option value="working">🟢 Working Only</option>
-                  <option value="notWorking">🔴 Not Working Only</option>
-                  <option value="pending">⏳ Pending Verification</option>
+                  <option value="pending">⏳ Pending Queue</option>
+                  <option value="completed">🟢 Completed Only</option>
+                  <option value="onHold">🟡 On Hold Only</option>
+                  <option value="failed">🔴 Failed Only</option>
                 </select>
               </div>
 

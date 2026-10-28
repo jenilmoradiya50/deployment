@@ -1,24 +1,42 @@
 import React, { useState, useEffect } from 'react';
 
 export default function RecordFormModal({ kind = 'Branch', recordToEdit, currentUser, users = [], onSave, onClose }) {
+  const isEditing = Boolean(recordToEdit && recordToEdit.id);
+  const [isQuickAdd, setIsQuickAdd] = useState(!isEditing);
   const [formData, setFormData] = useState({});
   const [secondaryIps, setSecondaryIps] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const isEditing = Boolean(recordToEdit && recordToEdit.id);
   const currentKind = formData.kind || (recordToEdit ? recordToEdit.kind : (kind === 'All' ? 'Branch' : kind));
   const isBranch = currentKind === 'Branch';
 
   useEffect(() => {
     if (recordToEdit) {
-      setFormData({ ...recordToEdit });
+      setFormData({
+        ...recordToEdit,
+        deploymentStatus: recordToEdit.deploymentStatus || (recordToEdit.working === 'Yes' ? 'Completed' : (recordToEdit.working === 'No' ? 'Failed' : 'Pending')),
+        isDhcp: recordToEdit.isDhcp || 'No',
+        bsnlPresent: recordToEdit.bsnlPresent || 'Yes',
+        jioPresent: recordToEdit.jioPresent || 'Yes',
+        airtelPresent: recordToEdit.airtelPresent || 'Yes',
+        airtelIs4G: recordToEdit.airtelIs4G || 'No',
+        airtelLoopbackIp: recordToEdit.airtelLoopbackIp || ''
+      });
       setSecondaryIps(Array.isArray(recordToEdit.secondaryLanIps) ? [...recordToEdit.secondaryLanIps] : []);
+      setIsQuickAdd(false);
     } else {
       setFormData({
         kind: kind === 'All' ? 'Branch' : kind,
         claimedBy: currentUser?.username || 'Admin@Canara',
         claimedByName: currentUser?.name || currentUser?.username || 'Admin',
+        deploymentStatus: 'Pending',
+        isDhcp: 'No',
+        bsnlPresent: 'Yes',
+        jioPresent: 'Yes',
+        airtelPresent: 'Yes',
+        airtelIs4G: 'No',
+        airtelLoopbackIp: '',
         vlanConfigured: 'No',
         vlanRemoved: 'Not Removed',
         bsnlPing: 'No',
@@ -35,6 +53,7 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
         uatSubmitted: 'No'
       });
       setSecondaryIps([]);
+      setIsQuickAdd(true);
     }
   }, [recordToEdit, kind, currentUser]);
 
@@ -78,9 +97,15 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
 
     setIsSubmitting(true);
     try {
+      // Sync working with deploymentStatus
+      const status = formData.deploymentStatus || 'Pending';
+      const working = status === 'Completed' ? 'Yes' : (status === 'Failed' ? 'No' : 'No');
+
       await onSave({
         ...formData,
         kind: currentKind,
+        deploymentStatus: status,
+        working,
         secondaryLanIps: secondaryIps.filter(s => s.ip && s.ip.trim() !== '')
       });
     } catch (err) {
@@ -120,12 +145,20 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
 
   return (
     <div className="modal-overlay modal-overlay-fullscreen">
-      <div className="modal-window record-form-fullscreen" onClick={(e) => e.stopPropagation()}>
+      <div className={`modal-window ${isQuickAdd ? 'quick-add-window' : 'record-form-fullscreen'}`} onClick={(e) => e.stopPropagation()}>
         <form onSubmit={handleSubmit} className="modal-form">
           <div className="modal-form-header">
             <div className="header-badge-title">
-              <span className="modal-tag">{currentKind.toUpperCase()} DEPLOYMENT</span>
-              <h2>{isEditing ? `Edit ${currentKind} Deployment` : `Register New ${currentKind} Deployment`}</h2>
+              <span className="modal-tag">
+                {isQuickAdd ? 'QUICK REGISTRATION' : `${currentKind.toUpperCase()} SPECIFICATION`}
+              </span>
+              <h2>
+                {isEditing
+                  ? `Edit ${currentKind} Deployment`
+                  : isQuickAdd
+                  ? `Register New ${currentKind} (Move to Pending)`
+                  : `Full ${currentKind} Deployment Setup`}
+              </h2>
             </div>
             <button
               type="button"
@@ -143,11 +176,14 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
             </div>
           )}
 
-          <div className="modal-form-scrollable">
-            {/* Deployment Type Selector (Branch vs ATM) */}
-            {!isEditing && (
+          {/* ==============================================================
+              VIEW 1: QUICK ADD VIEW (DP Code, FE Name & Phone -> Pending)
+              ============================================================== */}
+          {isQuickAdd ? (
+            <div className="modal-form-scrollable quick-add-body">
+              {/* Deployment Type Selector (Branch vs ATM) */}
               <div className="site-kind-selector-bar">
-                <span className="kind-selector-title">Select Site Type:</span>
+                <span className="kind-selector-title">Deployment Type:</span>
                 <div className="kind-toggle-pills">
                   <button
                     type="button"
@@ -165,509 +201,727 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
                   </button>
                 </div>
               </div>
-            )}
 
-            {/* 1. SITE IDENTIFICATION & OWNERSHIP */}
-            <div className="form-section-card">
-              <div className="form-section-header">
-                <span className="sec-icon">🏷️</span>
-                <h4>Site Identification & Ownership</h4>
+              <div className="quick-add-banner">
+                <span className="banner-icon">💡</span>
+                <div>
+                  <strong>Quick Registration Mode</strong>
+                  <p>Register the site code and on-site FE. This deployment will be immediately moved to the <strong>⏳ Pending</strong> queue. All detailed network IPs, VLANs, and ISP parameters can be added separately later.</p>
+                </div>
               </div>
-              <div className="form-fields-grid">
-                {isBranch ? (
-                  <div className="modal-form-field">
-                    <label htmlFor="f_dpCode" className="field-title required">
-                      Branch DP Code *
-                    </label>
-                    <input
-                      id="f_dpCode"
-                      type="text"
-                      className="field-input"
-                      placeholder="e.g. DP-4102"
-                      value={formData.dpCode || ''}
-                      onChange={(e) => handleChange('dpCode', e.target.value)}
-                      required
-                    />
-                  </div>
-                ) : (
-                  <>
-                    <div className="modal-form-field">
+
+              <div className="form-section-card">
+                <div className="form-fields-grid">
+                  {isBranch ? (
+                    <div className="modal-form-field full">
+                      <label htmlFor="f_dpCode" className="field-title required">
+                        Branch DP Code
+                      </label>
+                      <input
+                        id="f_dpCode"
+                        type="text"
+                        className="field-input ip-code primary-highlight-input"
+                        placeholder="e.g. DP-4102, DP-9821"
+                        value={formData.dpCode || ''}
+                        onChange={(e) => handleChange('dpCode', e.target.value)}
+                        autoFocus
+                        required
+                      />
+                    </div>
+                  ) : (
+                    <div className="modal-form-field full">
                       <label htmlFor="f_atmId" className="field-title required">
-                        ATM ID *
+                        ATM Terminal ID
                       </label>
                       <input
                         id="f_atmId"
                         type="text"
-                        className="field-input"
-                        placeholder="e.g. ATM-MH-9941"
+                        className="field-input ip-code primary-highlight-input"
+                        placeholder="e.g. ATM-CN-9921"
+                        value={formData.atmId || ''}
+                        onChange={(e) => handleChange('atmId', e.target.value)}
+                        autoFocus
+                        required
+                      />
+                    </div>
+                  )}
+
+                  <div className="modal-form-field">
+                    <label htmlFor="f_feName" className="field-title">
+                      On-Site Field Engineer Name <span className="field-hint">(Optional)</span>
+                    </label>
+                    <input
+                      id="f_feName"
+                      type="text"
+                      className="field-input"
+                      placeholder="e.g. Ramesh Kumar"
+                      value={formData.feName || ''}
+                      onChange={(e) => handleChange('feName', e.target.value)}
+                    />
+                  </div>
+
+                  <div className="modal-form-field">
+                    <label htmlFor="f_feNumber" className="field-title">
+                      Field Engineer Contact Number <span className="field-hint">(Optional)</span>
+                    </label>
+                    <input
+                      id="f_feNumber"
+                      type="tel"
+                      className="field-input"
+                      placeholder="e.g. 9845012345"
+                      value={formData.feNumber || ''}
+                      onChange={(e) => handleChange('feNumber', e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="quick-add-toggle-row">
+                <button
+                  type="button"
+                  className="switch-full-form-btn"
+                  onClick={() => setIsQuickAdd(false)}
+                >
+                  ⚙️ Or Switch to Full Technical Specs Form Now
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* ==============================================================
+                VIEW 2: FULL TECHNICAL SPECIFICATION FORM
+                ============================================================== */
+            <div className="modal-form-scrollable">
+              {/* Deployment Type Selector (Branch vs ATM) */}
+              {!isEditing && (
+                <div className="site-kind-selector-bar">
+                  <span className="kind-selector-title">Select Site Type:</span>
+                  <div className="kind-toggle-pills">
+                    <button
+                      type="button"
+                      className={`kind-pill-btn ${isBranch ? 'active' : ''}`}
+                      onClick={() => handleChange('kind', 'Branch')}
+                    >
+                      🏢 Branch Router
+                    </button>
+                    <button
+                      type="button"
+                      className={`kind-pill-btn ${!isBranch ? 'active' : ''}`}
+                      onClick={() => handleChange('kind', 'ATM')}
+                    >
+                      🏧 ATM Terminal
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 1. STATUS & ASSIGNMENT */}
+              <div className="form-section-card">
+                <div className="form-section-header">
+                  <span className="sec-icon">🚦</span>
+                  <h4>Deployment Status & Ownership</h4>
+                </div>
+                <div className="form-fields-grid">
+                  <div className="modal-form-field">
+                    <label className="field-title">Deployment Status</label>
+                    <div className="choice-pills-row">
+                      {['Pending', 'Completed', 'On Hold', 'Failed'].map(st => {
+                        const isChecked = (formData.deploymentStatus || 'Pending') === st;
+                        return (
+                          <label key={st} className={`choice-radio-pill status-pill-choice ${st.toLowerCase().replace(' ', '-')} ${isChecked ? 'active' : ''}`}>
+                            <input
+                              type="radio"
+                              name="deploymentStatus"
+                              value={st}
+                              checked={isChecked}
+                              onChange={() => handleChange('deploymentStatus', st)}
+                            />
+                            <span>
+                              {st === 'Completed' ? '🟢 ' : st === 'Pending' ? '⏳ ' : st === 'On Hold' ? '🟡 ' : '🔴 '}
+                              {st}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="modal-form-field">
+                    <label className="field-title">Assigned NOC Engineer</label>
+                    <select
+                      className="field-input"
+                      value={formData.claimedBy || ''}
+                      onChange={(e) => {
+                        const selectedUname = e.target.value;
+                        const found = users.find(u => u.username === selectedUname);
+                        handleChange('claimedBy', selectedUname);
+                        handleChange('claimedByName', found ? (found.name || found.username) : selectedUname);
+                      }}
+                    >
+                      <option value="">⚪ Unassigned / Available</option>
+                      {users.map(u => (
+                        <option key={u.id || u.username} value={u.username}>
+                          👤 {u.name ? `${u.name} (${u.username})` : u.username}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. CORE SITE & FIELD ENGINEER INFO */}
+              <div className="form-section-card">
+                <div className="form-section-header">
+                  <span className="sec-icon">📍</span>
+                  <h4>{isBranch ? 'Branch Information' : 'ATM Terminal Information'}</h4>
+                </div>
+                <div className="form-fields-grid">
+                  {isBranch ? (
+                    <div className="modal-form-field full">
+                      <label htmlFor="f_dpCode" className="field-title required">
+                        Branch DP Code
+                      </label>
+                      <input
+                        id="f_dpCode"
+                        type="text"
+                        className="field-input ip-code"
+                        placeholder="e.g. DP-4102"
+                        value={formData.dpCode || ''}
+                        onChange={(e) => handleChange('dpCode', e.target.value)}
+                        required
+                      />
+                    </div>
+                  ) : (
+                    <div className="modal-form-field full">
+                      <label htmlFor="f_atmId" className="field-title required">
+                        ATM ID
+                      </label>
+                      <input
+                        id="f_atmId"
+                        type="text"
+                        className="field-input ip-code"
+                        placeholder="e.g. ATM-CN-9921"
                         value={formData.atmId || ''}
                         onChange={(e) => handleChange('atmId', e.target.value)}
                         required
                       />
                     </div>
-                    <div className="modal-form-field">
-                      <label htmlFor="f_dpCode" className="field-title">
-                        Base Branch DP Code
-                      </label>
-                      <input
-                        id="f_dpCode"
-                        type="text"
-                        className="field-input"
-                        placeholder="e.g. DP-4102"
-                        value={formData.dpCode || ''}
-                        onChange={(e) => handleChange('dpCode', e.target.value)}
-                      />
-                    </div>
-                  </>
-                )}
+                  )}
 
-                {/* Site Assigned / Claimed By */}
-                <div className="modal-form-field">
-                  <label htmlFor="f_claimedBy" className="field-title">
-                    Assigned To / Site Taken By
-                  </label>
-                  <select
-                    id="f_claimedBy"
-                    className="field-input"
-                    value={formData.claimedBy || ''}
-                    onChange={(e) => {
-                      const selectedUname = e.target.value;
-                      const matched = users.find(u => u.username === selectedUname);
-                      setFormData(prev => ({
-                        ...prev,
-                        claimedBy: selectedUname,
-                        claimedByName: matched ? matched.name : selectedUname
-                      }));
-                    }}
-                  >
-                    <option value="">-- Unassigned --</option>
-                    {users.map(u => (
-                      <option key={u.id} value={u.username}>
-                        {u.name || u.username} ({u.username})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* 2. FIELD ENGINEER (FE) DETAILS & UAT FORM */}
-            <div className="form-section-card">
-              <div className="form-section-header">
-                <span className="sec-icon">👷</span>
-                <h4>Field Engineer (FE) & UAT Sign-Off</h4>
-              </div>
-              <div className="form-fields-grid">
-                <div className="modal-form-field">
-                  <label htmlFor="f_feName" className="field-title">
-                    FE Name
-                  </label>
-                  <input
-                    id="f_feName"
-                    type="text"
-                    className="field-input"
-                    placeholder="Enter Field Engineer Name"
-                    value={formData.feName || ''}
-                    onChange={(e) => handleChange('feName', e.target.value)}
-                  />
-                </div>
-
-                <div className="modal-form-field">
-                  <label htmlFor="f_feNumber" className="field-title">
-                    FE Contact Number
-                  </label>
-                  <input
-                    id="f_feNumber"
-                    type="tel"
-                    className="field-input"
-                    placeholder="e.g. 9845012345"
-                    value={formData.feNumber || ''}
-                    onChange={(e) => handleChange('feNumber', e.target.value)}
-                  />
-                </div>
-
-                {renderRadioPill('uatSubmitted', 'FE Gave UAT Form?', ['Yes', 'No'])}
-
-                <div className="modal-form-field">
-                  <label htmlFor="f_uatFormNo" className="field-title">
-                    UAT Form / Reference Number
-                  </label>
-                  <input
-                    id="f_uatFormNo"
-                    type="text"
-                    className="field-input"
-                    placeholder="e.g. UAT-CN-4102-01"
-                    value={formData.uatFormNo || ''}
-                    onChange={(e) => handleChange('uatFormNo', e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* 3. HARDWARE & DEVICE SERIAL NUMBERS */}
-            <div className="form-section-card">
-              <div className="form-section-header">
-                <span className="sec-icon">📦</span>
-                <h4>Device Hardware Serial Numbers</h4>
-              </div>
-              <div className="form-fields-grid">
-                <div className="modal-form-field full">
-                  <label htmlFor="f_newDeviceSerial" className="field-title">
-                    New SD-WAN Device Serial Number
-                  </label>
-                  <input
-                    id="f_newDeviceSerial"
-                    type="text"
-                    className="field-input ip-code"
-                    placeholder="e.g. CN-SDWAN-994821"
-                    value={formData.newDeviceSerial || ''}
-                    onChange={(e) => handleChange('newDeviceSerial', e.target.value)}
-                  />
-                </div>
-
-                <div className="modal-form-field">
-                  <label htmlFor="f_oldDeviceModel" className="field-title">
-                    Old Device Model
-                  </label>
-                  <input
-                    id="f_oldDeviceModel"
-                    type="text"
-                    className="field-input"
-                    placeholder="e.g. Cisco 1921/K9, Fortinet 40F"
-                    value={formData.oldDeviceModel || ''}
-                    onChange={(e) => handleChange('oldDeviceModel', e.target.value)}
-                  />
-                </div>
-
-                <div className="modal-form-field">
-                  <label htmlFor="f_oldDeviceSerial" className="field-title">
-                    Old Device Serial Number
-                  </label>
-                  <input
-                    id="f_oldDeviceSerial"
-                    type="text"
-                    className="field-input ip-code"
-                    placeholder="e.g. FTX1842A001"
-                    value={formData.oldDeviceSerial || ''}
-                    onChange={(e) => handleChange('oldDeviceSerial', e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* 4. VLAN CONFIGURATION */}
-            <div className="form-section-card">
-              <div className="form-section-header">
-                <span className="sec-icon">🔀</span>
-                <h4>VLAN Configuration</h4>
-              </div>
-              <div className="form-fields-grid">
-                {renderRadioPill('vlanConfigured', 'VLAN Configured?', ['Yes', 'No'])}
-
-                {formData.vlanConfigured === 'Yes' && (
-                  <>
-                    <div className="modal-form-field">
-                      <label htmlFor="f_vlanDetails" className="field-title">
-                        Which VLAN is there?
-                      </label>
-                      <input
-                        id="f_vlanDetails"
-                        type="text"
-                        className="field-input"
-                        placeholder="e.g. VLAN 100 (Core Banking), VLAN 20"
-                        value={formData.vlanDetails || ''}
-                        onChange={(e) => handleChange('vlanDetails', e.target.value)}
-                      />
-                    </div>
-
-                    {renderRadioPill('vlanRemoved', 'VLAN Removed or Not?', ['Removed', 'Not Removed'])}
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* 5. LAN NETWORK & SECONDARY IPS (LIMIT 3) */}
-            <div className="form-section-card">
-              <div className="form-section-header">
-                <span className="sec-icon">🌐</span>
-                <h4>Primary LAN & Secondary IP Configuration</h4>
-              </div>
-              <div className="form-fields-grid">
-                <div className="modal-form-field">
-                  <label htmlFor="f_primaryLanIp" className="field-title">
-                    Primary LAN IP
-                  </label>
-                  <input
-                    id="f_primaryLanIp"
-                    type="text"
-                    className="field-input ip-code"
-                    placeholder="e.g. 10.24.120.1"
-                    value={formData.primaryLanIp || formData.lanIp || ''}
-                    onChange={(e) => handleChange('primaryLanIp', e.target.value)}
-                  />
-                </div>
-
-                <div className="modal-form-field">
-                  <label htmlFor="f_lanIpPrefix" className="field-title">
-                    LAN IP Prefix / Subnet
-                  </label>
-                  <input
-                    id="f_lanIpPrefix"
-                    type="text"
-                    className="field-input ip-code"
-                    placeholder="e.g. /24, /28, 255.255.255.0"
-                    value={formData.lanIpPrefix || ''}
-                    onChange={(e) => handleChange('lanIpPrefix', e.target.value)}
-                  />
-                </div>
-
-                <div className="modal-form-field full">
-                  <label htmlFor="f_primaryLanGateway" className="field-title">
-                    Primary LAN Gateway
-                  </label>
-                  <input
-                    id="f_primaryLanGateway"
-                    type="text"
-                    className="field-input ip-code"
-                    placeholder="e.g. 10.24.120.254"
-                    value={formData.primaryLanGateway || formData.lanGateway || ''}
-                    onChange={(e) => handleChange('primaryLanGateway', e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* Dynamic Secondary LAN IPs (Limit 3) */}
-              <div className="secondary-ips-container">
-                <div className="sec-header-row">
-                  <div>
-                    <h5>Secondary LAN IPs ({secondaryIps.length}/3)</h5>
-                    <p className="sub-hint">Add additional LAN subnets or interfaces (Max 3 sections)</p>
+                  <div className="modal-form-field">
+                    <label htmlFor="f_feName" className="field-title">
+                      Field Engineer (FE) Name
+                    </label>
+                    <input
+                      id="f_feName"
+                      type="text"
+                      className="field-input"
+                      placeholder="e.g. Rajesh Sharma"
+                      value={formData.feName || ''}
+                      onChange={(e) => handleChange('feName', e.target.value)}
+                    />
                   </div>
-                  <button
-                    type="button"
-                    className="add-sec-ip-btn"
-                    onClick={handleAddSecondaryIp}
-                    disabled={secondaryIps.length >= 3}
-                  >
-                    {secondaryIps.length >= 3 ? '(Limit 3 Reached)' : '＋ Add Secondary LAN IP'}
-                  </button>
-                </div>
 
-                {secondaryIps.map((sec, idx) => (
-                  <div key={idx} className="secondary-ip-box">
-                    <div className="sec-box-header">
-                      <strong>Secondary LAN Section #{idx + 1}</strong>
-                      <button
-                        type="button"
-                        className="remove-sec-btn"
-                        onClick={() => handleRemoveSecondaryIp(idx)}
-                      >
-                        ✕ Remove
-                      </button>
-                    </div>
-                    <div className="form-fields-grid">
+                  <div className="modal-form-field">
+                    <label htmlFor="f_feNumber" className="field-title">
+                      FE Contact Number
+                    </label>
+                    <input
+                      id="f_feNumber"
+                      type="tel"
+                      className="field-input"
+                      placeholder="e.g. 9845012345"
+                      value={formData.feNumber || ''}
+                      onChange={(e) => handleChange('feNumber', e.target.value)}
+                    />
+                  </div>
+
+                  {renderRadioPill('uatSubmitted', 'UAT Form Submitted?', ['Yes', 'No'])}
+
+                  <div className="modal-form-field">
+                    <label htmlFor="f_uatFormNo" className="field-title">
+                      UAT Form Number / Reference
+                    </label>
+                    <input
+                      id="f_uatFormNo"
+                      type="text"
+                      className="field-input ip-code"
+                      placeholder="e.g. UAT-CN-4102-01"
+                      value={formData.uatFormNo || ''}
+                      onChange={(e) => handleChange('uatFormNo', e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. HARDWARE & DEVICE SERIAL NUMBERS */}
+              <div className="form-section-card">
+                <div className="form-section-header">
+                  <span className="sec-icon">📦</span>
+                  <h4>Device Hardware Serial Numbers</h4>
+                </div>
+                <div className="form-fields-grid">
+                  <div className="modal-form-field full">
+                    <label htmlFor="f_newDeviceSerial" className="field-title">
+                      New SD-WAN Device Serial Number
+                    </label>
+                    <input
+                      id="f_newDeviceSerial"
+                      type="text"
+                      className="field-input ip-code"
+                      placeholder="e.g. CN-SDWAN-994821"
+                      value={formData.newDeviceSerial || ''}
+                      onChange={(e) => handleChange('newDeviceSerial', e.target.value)}
+                    />
+                  </div>
+
+                  <div className="modal-form-field">
+                    <label htmlFor="f_oldDeviceModel" className="field-title">
+                      Old Device Model
+                    </label>
+                    <input
+                      id="f_oldDeviceModel"
+                      type="text"
+                      className="field-input"
+                      placeholder="e.g. Cisco 1921/K9, Fortinet 40F"
+                      value={formData.oldDeviceModel || ''}
+                      onChange={(e) => handleChange('oldDeviceModel', e.target.value)}
+                    />
+                  </div>
+
+                  <div className="modal-form-field">
+                    <label htmlFor="f_oldDeviceSerial" className="field-title">
+                      Old Device Serial Number
+                    </label>
+                    <input
+                      id="f_oldDeviceSerial"
+                      type="text"
+                      className="field-input ip-code"
+                      placeholder="e.g. FTX1842A001"
+                      value={formData.oldDeviceSerial || ''}
+                      onChange={(e) => handleChange('oldDeviceSerial', e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. VLAN CONFIGURATION */}
+              <div className="form-section-card">
+                <div className="form-section-header">
+                  <span className="sec-icon">🔀</span>
+                  <h4>VLAN Configuration</h4>
+                </div>
+                <div className="form-fields-grid">
+                  {renderRadioPill('vlanConfigured', 'VLAN Configured?', ['Yes', 'No'])}
+
+                  {formData.vlanConfigured === 'Yes' && (
+                    <>
                       <div className="modal-form-field">
-                        <label className="field-title">Secondary IP</label>
+                        <label htmlFor="f_vlanDetails" className="field-title">
+                          Which VLAN is there?
+                        </label>
                         <input
-                          type="text"
-                          className="field-input ip-code"
-                          placeholder="e.g. 10.24.120.60"
-                          value={sec.ip || ''}
-                          onChange={(e) => handleUpdateSecondaryIp(idx, 'ip', e.target.value)}
-                        />
-                      </div>
-                      <div className="modal-form-field">
-                        <label className="field-title">Prefix / Subnet</label>
-                        <input
-                          type="text"
-                          className="field-input ip-code"
-                          placeholder="e.g. /28"
-                          value={sec.prefix || ''}
-                          onChange={(e) => handleUpdateSecondaryIp(idx, 'prefix', e.target.value)}
-                        />
-                      </div>
-                      <div className="modal-form-field full">
-                        <label className="field-title">Purpose / Note</label>
-                        <input
+                          id="f_vlanDetails"
                           type="text"
                           className="field-input"
-                          placeholder="e.g. ATM Switch, Surveillance VLAN"
-                          value={sec.note || ''}
-                          onChange={(e) => handleUpdateSecondaryIp(idx, 'note', e.target.value)}
+                          placeholder="e.g. VLAN 100 (Core Banking), VLAN 20"
+                          value={formData.vlanDetails || ''}
+                          onChange={(e) => handleChange('vlanDetails', e.target.value)}
                         />
                       </div>
-                    </div>
+
+                      {renderRadioPill('vlanRemoved', 'VLAN Removed or Not?', ['Removed', 'Not Removed'])}
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* 5. LAN NETWORK & SECONDARY IPS */}
+              <div className="form-section-card">
+                <div className="form-section-header">
+                  <span className="sec-icon">🌐</span>
+                  <h4>Primary LAN & DHCP Configuration</h4>
+                </div>
+                <div className="form-fields-grid">
+                  {/* DHCP Checkbox */}
+                  <div className="modal-form-field full dhcp-toggle-card">
+                    <label className="checkbox-control-label">
+                      <input
+                        type="checkbox"
+                        checked={formData.isDhcp === 'Yes'}
+                        onChange={(e) => handleChange('isDhcp', e.target.checked ? 'Yes' : 'No')}
+                      />
+                      <span><strong>☑️ Branch Uses DHCP (Automatic IP Assignment)</strong></span>
+                    </label>
+                    <span className="sub-hint">Check if this branch obtains its primary IP via DHCP rather than static IP</span>
                   </div>
-                ))}
-              </div>
-            </div>
 
-            {/* 6. BSNL CONNECTIVITY */}
-            <div className="form-section-card">
-              <div className="form-section-header">
-                <span className="sec-icon">⚡</span>
-                <h4>BSNL Circuit</h4>
-              </div>
-              <div className="form-fields-grid">
-                <div className="modal-form-field">
-                  <label htmlFor="f_bsnlIp" className="field-title">BSNL IP</label>
-                  <input
-                    id="f_bsnlIp"
-                    type="text"
-                    className="field-input ip-code"
-                    placeholder="e.g. 192.168.10.2"
-                    value={formData.bsnlIp || ''}
-                    onChange={(e) => handleChange('bsnlIp', e.target.value)}
-                  />
-                </div>
-                <div className="modal-form-field">
-                  <label htmlFor="f_bsnlGateway" className="field-title">BSNL Gateway</label>
-                  <input
-                    id="f_bsnlGateway"
-                    type="text"
-                    className="field-input ip-code"
-                    placeholder="e.g. 192.168.10.1"
-                    value={formData.bsnlGateway || ''}
-                    onChange={(e) => handleChange('bsnlGateway', e.target.value)}
-                  />
-                </div>
-                {renderRadioPill('bsnlPing', 'BSNL IP Pinging?', ['Yes', 'No'])}
-              </div>
-            </div>
+                  <div className="modal-form-field">
+                    <label htmlFor="f_primaryLanIp" className="field-title">
+                      Primary LAN IP
+                    </label>
+                    <input
+                      id="f_primaryLanIp"
+                      type="text"
+                      className="field-input ip-code"
+                      placeholder="e.g. 10.24.120.1"
+                      value={formData.primaryLanIp || formData.lanIp || ''}
+                      onChange={(e) => handleChange('primaryLanIp', e.target.value)}
+                    />
+                  </div>
 
-            {/* 7. JIO CONNECTIVITY */}
-            <div className="form-section-card">
-              <div className="form-section-header">
-                <span className="sec-icon">⚡</span>
-                <h4>Jio Circuit</h4>
-              </div>
-              <div className="form-fields-grid">
-                <div className="modal-form-field">
-                  <label htmlFor="f_jioIp" className="field-title">Jio IP</label>
-                  <input
-                    id="f_jioIp"
-                    type="text"
-                    className="field-input ip-code"
-                    placeholder="e.g. 172.16.20.2"
-                    value={formData.jioIp || ''}
-                    onChange={(e) => handleChange('jioIp', e.target.value)}
-                  />
-                </div>
-                <div className="modal-form-field">
-                  <label htmlFor="f_jioGateway" className="field-title">Jio Gateway</label>
-                  <input
-                    id="f_jioGateway"
-                    type="text"
-                    className="field-input ip-code"
-                    placeholder="e.g. 172.16.20.1"
-                    value={formData.jioGateway || ''}
-                    onChange={(e) => handleChange('jioGateway', e.target.value)}
-                  />
-                </div>
-                {renderRadioPill('jioPing', 'Jio IP Pinging?', ['Yes', 'No'])}
-              </div>
-            </div>
+                  <div className="modal-form-field">
+                    <label htmlFor="f_lanIpPrefix" className="field-title">
+                      LAN IP Prefix / Subnet
+                    </label>
+                    <input
+                      id="f_lanIpPrefix"
+                      type="text"
+                      className="field-input ip-code"
+                      placeholder="e.g. /24, /28, 255.255.255.0"
+                      value={formData.lanIpPrefix || ''}
+                      onChange={(e) => handleChange('lanIpPrefix', e.target.value)}
+                    />
+                  </div>
 
-            {/* 8. AIRTEL & CE CONNECTIVITY */}
-            <div className="form-section-card">
-              <div className="form-section-header">
-                <span className="sec-icon">⚡</span>
-                <h4>Airtel & CE Circuit</h4>
-              </div>
-              <div className="form-fields-grid">
-                <div className="modal-form-field">
-                  <label htmlFor="f_airtelIp" className="field-title">Airtel IP</label>
-                  <input
-                    id="f_airtelIp"
-                    type="text"
-                    className="field-input ip-code"
-                    placeholder="e.g. 10.100.5.2"
-                    value={formData.airtelIp || ''}
-                    onChange={(e) => handleChange('airtelIp', e.target.value)}
-                  />
+                  <div className="modal-form-field full">
+                    <label htmlFor="f_primaryLanGateway" className="field-title">
+                      Primary LAN Gateway
+                    </label>
+                    <input
+                      id="f_primaryLanGateway"
+                      type="text"
+                      className="field-input ip-code"
+                      placeholder="e.g. 10.24.120.254"
+                      value={formData.primaryLanGateway || formData.lanGateway || ''}
+                      onChange={(e) => handleChange('primaryLanGateway', e.target.value)}
+                    />
+                  </div>
                 </div>
-                <div className="modal-form-field">
-                  <label htmlFor="f_airtelGateway" className="field-title">Airtel Gateway</label>
-                  <input
-                    id="f_airtelGateway"
-                    type="text"
-                    className="field-input ip-code"
-                    placeholder="e.g. 10.100.5.1"
-                    value={formData.airtelGateway || ''}
-                    onChange={(e) => handleChange('airtelGateway', e.target.value)}
-                  />
-                </div>
-                <div className="modal-form-field">
-                  <label htmlFor="f_ceIp" className="field-title">CE IP</label>
-                  <input
-                    id="f_ceIp"
-                    type="text"
-                    className="field-input ip-code"
-                    placeholder="e.g. 10.100.5.254"
-                    value={formData.ceIp || ''}
-                    onChange={(e) => handleChange('ceIp', e.target.value)}
-                  />
-                </div>
-                {renderRadioPill('airtelPing', 'Airtel / CE IP Pinging?', ['Yes', 'No'])}
-              </div>
-            </div>
 
-            {/* 9. CONFIGURATION & HANDOVER CHECKLIST */}
-            <div className="form-section-card">
-              <div className="form-section-header">
-                <span className="sec-icon">📋</span>
-                <h4>SD-WAN Handover & Sign-Off Checklist</h4>
-              </div>
-              <div className="form-fields-grid">
-                {renderRadioPill('configuration', 'Configuration Status', ['Completed', 'Not completed'])}
-                {renderRadioPill('mpAdded', 'Device Added in CS?', ['Yes', 'No'])}
-                {renderRadioPill('deviceOnline', 'Device Online?', ['Yes', 'No'])}
-                {renderRadioPill('mailSent', 'Handover Mail Sent?', ['Yes', 'No'])}
-                {renderRadioPill('dcMail', 'Mail from DC', ['Received', 'Not received'])}
-                {renderRadioPill('drcMail', 'Mail from DRC', ['Received', 'Not received'])}
-                {renderRadioPill('cablesConnected', 'ISP & LAN Cables Connected?', ['Connected', 'Not connected'])}
-                {renderRadioPill('working', 'Is Site Operational & Working?', ['Yes', 'No'])}
-              </div>
-            </div>
+                {/* Dynamic Secondary LAN IPs (Limit 3) */}
+                <div className="secondary-ips-container">
+                  <div className="sec-header-row">
+                    <div>
+                      <h5>Secondary LAN IPs ({secondaryIps.length}/3)</h5>
+                      <p className="sub-hint">Add additional LAN subnets or interfaces (Max 3 sections)</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="add-sec-ip-btn"
+                      onClick={handleAddSecondaryIp}
+                      disabled={secondaryIps.length >= 3}
+                    >
+                      {secondaryIps.length >= 3 ? '(Limit 3 Reached)' : '＋ Add Secondary LAN IP'}
+                    </button>
+                  </div>
 
-            {/* 10. NOTES */}
-            <div className="form-section-card">
-              <div className="form-section-header">
-                <span className="sec-icon">📝</span>
-                <h4>Engineering Notes & Observations</h4>
+                  {secondaryIps.map((sec, idx) => (
+                    <div key={idx} className="secondary-ip-box">
+                      <div className="sec-box-header">
+                        <strong>Secondary LAN Section #{idx + 1}</strong>
+                        <button
+                          type="button"
+                          className="remove-sec-btn"
+                          onClick={() => handleRemoveSecondaryIp(idx)}
+                        >
+                          ✕ Remove
+                        </button>
+                      </div>
+                      <div className="form-fields-grid">
+                        <div className="modal-form-field">
+                          <label className="field-title">Secondary IP</label>
+                          <input
+                            type="text"
+                            className="field-input ip-code"
+                            placeholder="e.g. 10.24.120.60"
+                            value={sec.ip || ''}
+                            onChange={(e) => handleUpdateSecondaryIp(idx, 'ip', e.target.value)}
+                          />
+                        </div>
+                        <div className="modal-form-field">
+                          <label className="field-title">Prefix / Subnet</label>
+                          <input
+                            type="text"
+                            className="field-input ip-code"
+                            placeholder="e.g. /28"
+                            value={sec.prefix || ''}
+                            onChange={(e) => handleUpdateSecondaryIp(idx, 'prefix', e.target.value)}
+                          />
+                        </div>
+                        <div className="modal-form-field full">
+                          <label className="field-title">Purpose / Note</label>
+                          <input
+                            type="text"
+                            className="field-input"
+                            placeholder="e.g. ATM Switch, Surveillance VLAN"
+                            value={sec.note || ''}
+                            onChange={(e) => handleUpdateSecondaryIp(idx, 'note', e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="modal-form-field full">
-                <textarea
-                  className="field-input"
-                  rows="3"
-                  placeholder="Enter any site handover notes or remarks..."
-                  value={formData.notes || ''}
-                  onChange={(e) => handleChange('notes', e.target.value)}
-                />
+
+              {/* 6. BSNL CONNECTIVITY */}
+              <div className="form-section-card">
+                <div className="form-section-header">
+                  <span className="sec-icon">⚡</span>
+                  <h4>BSNL Circuit</h4>
+                  <div className="isp-availability-toggle">
+                    <label className="isp-toggle-label">
+                      <input
+                        type="checkbox"
+                        checked={formData.bsnlPresent !== 'No'}
+                        onChange={(e) => handleChange('bsnlPresent', e.target.checked ? 'Yes' : 'No')}
+                      />
+                      <span>{formData.bsnlPresent !== 'No' ? 'Present at Site' : 'Not Present (N/A)'}</span>
+                    </label>
+                  </div>
+                </div>
+
+                {formData.bsnlPresent === 'No' ? (
+                  <div className="isp-not-present-notice">
+                    ⚪ BSNL circuit is not present at this branch.
+                  </div>
+                ) : (
+                  <div className="form-fields-grid">
+                    <div className="modal-form-field">
+                      <label htmlFor="f_bsnlIp" className="field-title">BSNL IP</label>
+                      <input
+                        id="f_bsnlIp"
+                        type="text"
+                        className="field-input ip-code"
+                        placeholder="e.g. 192.168.10.2"
+                        value={formData.bsnlIp || ''}
+                        onChange={(e) => handleChange('bsnlIp', e.target.value)}
+                      />
+                    </div>
+                    <div className="modal-form-field">
+                      <label htmlFor="f_bsnlGateway" className="field-title">BSNL Gateway</label>
+                      <input
+                        id="f_bsnlGateway"
+                        type="text"
+                        className="field-input ip-code"
+                        placeholder="e.g. 192.168.10.1"
+                        value={formData.bsnlGateway || ''}
+                        onChange={(e) => handleChange('bsnlGateway', e.target.value)}
+                      />
+                    </div>
+                    {renderRadioPill('bsnlPing', 'BSNL IP Pinging?', ['Yes', 'No'])}
+                  </div>
+                )}
+              </div>
+
+              {/* 7. JIO CONNECTIVITY */}
+              <div className="form-section-card">
+                <div className="form-section-header">
+                  <span className="sec-icon">⚡</span>
+                  <h4>Jio Circuit</h4>
+                  <div className="isp-availability-toggle">
+                    <label className="isp-toggle-label">
+                      <input
+                        type="checkbox"
+                        checked={formData.jioPresent !== 'No'}
+                        onChange={(e) => handleChange('jioPresent', e.target.checked ? 'Yes' : 'No')}
+                      />
+                      <span>{formData.jioPresent !== 'No' ? 'Present at Site' : 'Not Present (N/A)'}</span>
+                    </label>
+                  </div>
+                </div>
+
+                {formData.jioPresent === 'No' ? (
+                  <div className="isp-not-present-notice">
+                    ⚪ Jio circuit is not present at this branch.
+                  </div>
+                ) : (
+                  <div className="form-fields-grid">
+                    <div className="modal-form-field">
+                      <label htmlFor="f_jioIp" className="field-title">Jio IP</label>
+                      <input
+                        id="f_jioIp"
+                        type="text"
+                        className="field-input ip-code"
+                        placeholder="e.g. 172.16.20.2"
+                        value={formData.jioIp || ''}
+                        onChange={(e) => handleChange('jioIp', e.target.value)}
+                      />
+                    </div>
+                    <div className="modal-form-field">
+                      <label htmlFor="f_jioGateway" className="field-title">Jio Gateway</label>
+                      <input
+                        id="f_jioGateway"
+                        type="text"
+                        className="field-input ip-code"
+                        placeholder="e.g. 172.16.20.1"
+                        value={formData.jioGateway || ''}
+                        onChange={(e) => handleChange('jioGateway', e.target.value)}
+                      />
+                    </div>
+                    {renderRadioPill('jioPing', 'Jio IP Pinging?', ['Yes', 'No'])}
+                  </div>
+                )}
+              </div>
+
+              {/* 8. AIRTEL CONNECTIVITY (4G Loopback IP Support, CE Removed) */}
+              <div className="form-section-card">
+                <div className="form-section-header">
+                  <span className="sec-icon">⚡</span>
+                  <h4>Airtel Circuit</h4>
+                  <div className="isp-availability-toggle">
+                    <label className="isp-toggle-label">
+                      <input
+                        type="checkbox"
+                        checked={formData.airtelPresent !== 'No'}
+                        onChange={(e) => handleChange('airtelPresent', e.target.checked ? 'Yes' : 'No')}
+                      />
+                      <span>{formData.airtelPresent !== 'No' ? 'Present at Site' : 'Not Present (N/A)'}</span>
+                    </label>
+                  </div>
+                </div>
+
+                {formData.airtelPresent === 'No' ? (
+                  <div className="isp-not-present-notice">
+                    ⚪ Airtel circuit is not present at this branch.
+                  </div>
+                ) : (
+                  <div className="form-fields-grid">
+                    {/* Airtel 4G Option */}
+                    <div className="modal-form-field full airtel-4g-toggle-card">
+                      <label className="checkbox-control-label">
+                        <input
+                          type="checkbox"
+                          checked={formData.airtelIs4G === 'Yes'}
+                          onChange={(e) => handleChange('airtelIs4G', e.target.checked ? 'Yes' : 'No')}
+                        />
+                        <span><strong>📶 Airtel is a 4G Connection</strong></span>
+                      </label>
+                    </div>
+
+                    {/* Loopback IP (if 4G) */}
+                    {formData.airtelIs4G === 'Yes' && (
+                      <div className="modal-form-field full loopback-field-highlight">
+                        <label htmlFor="f_airtelLoopbackIp" className="field-title required">
+                          Airtel 4G Loopback IP
+                        </label>
+                        <input
+                          id="f_airtelLoopbackIp"
+                          type="text"
+                          className="field-input ip-code primary-highlight-input"
+                          placeholder="e.g. 10.200.12.1"
+                          value={formData.airtelLoopbackIp || ''}
+                          onChange={(e) => handleChange('airtelLoopbackIp', e.target.value)}
+                        />
+                      </div>
+                    )}
+
+                    <div className="modal-form-field">
+                      <label htmlFor="f_airtelIp" className="field-title">Airtel IP</label>
+                      <input
+                        id="f_airtelIp"
+                        type="text"
+                        className="field-input ip-code"
+                        placeholder="e.g. 10.100.5.2"
+                        value={formData.airtelIp || ''}
+                        onChange={(e) => handleChange('airtelIp', e.target.value)}
+                      />
+                    </div>
+                    <div className="modal-form-field">
+                      <label htmlFor="f_airtelGateway" className="field-title">Airtel Gateway</label>
+                      <input
+                        id="f_airtelGateway"
+                        type="text"
+                        className="field-input ip-code"
+                        placeholder="e.g. 10.100.5.1"
+                        value={formData.airtelGateway || ''}
+                        onChange={(e) => handleChange('airtelGateway', e.target.value)}
+                      />
+                    </div>
+                    {renderRadioPill('airtelPing', 'Airtel IP Pinging?', ['Yes', 'No'])}
+                  </div>
+                )}
+              </div>
+
+              {/* 9. CONFIGURATION & HANDOVER CHECKLIST */}
+              <div className="form-section-card">
+                <div className="form-section-header">
+                  <span className="sec-icon">📋</span>
+                  <h4>SD-WAN Handover & Sign-Off Checklist</h4>
+                </div>
+                <div className="form-fields-grid">
+                  {renderRadioPill('configuration', 'Configuration Status', ['Completed', 'Not completed'])}
+                  {renderRadioPill('mpAdded', 'Device Added in CS?', ['Yes', 'No'])}
+                  {renderRadioPill('deviceOnline', 'Device Online?', ['Yes', 'No'])}
+                  {renderRadioPill('mailSent', 'Handover Mail Sent?', ['Yes', 'No'])}
+                  {renderRadioPill('dcMail', 'Mail from DC', ['Received', 'Not received'])}
+                  {renderRadioPill('drcMail', 'Mail from DRC', ['Received', 'Not received'])}
+                  {renderRadioPill('cablesConnected', 'ISP & LAN Cables Connected?', ['Connected', 'Not connected'])}
+                  {renderRadioPill('working', 'Is Site Operational & Working?', ['Yes', 'No'])}
+                </div>
+              </div>
+
+              {/* 10. NOTES */}
+              <div className="form-section-card">
+                <div className="form-section-header">
+                  <span className="sec-icon">📝</span>
+                  <h4>Engineering Notes & Observations</h4>
+                </div>
+                <div className="modal-form-field full">
+                  <textarea
+                    className="field-input"
+                    rows="3"
+                    placeholder="Enter any site handover notes or remarks..."
+                    value={formData.notes || ''}
+                    onChange={(e) => handleChange('notes', e.target.value)}
+                  />
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           <div className="modal-form-footer">
-            <button
-              type="submit"
-              className="save-btn"
-              disabled={isSubmitting}
-            >
-              {isSubmitting
-                ? 'Saving to Database...'
-                : isEditing
-                ? 'Save Changes'
-                : `Create ${currentKind} Record`}
-            </button>
-            <button
-              type="button"
-              className="cancel-btn"
-              onClick={onClose}
-              disabled={isSubmitting}
-            >
-              Cancel
-            </button>
+            {isQuickAdd ? (
+              <>
+                <button
+                  type="submit"
+                  className="save-btn quick-submit-btn"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'Registering...' : '＋ Register & Move to Pending'}
+                </button>
+                <button
+                  type="button"
+                  className="cancel-btn"
+                  onClick={onClose}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="submit"
+                  className="save-btn"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting
+                    ? 'Saving to Database...'
+                    : isEditing
+                    ? 'Save Changes'
+                    : `Create ${currentKind} Record`}
+                </button>
+                <button
+                  type="button"
+                  className="cancel-btn"
+                  onClick={onClose}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </button>
+              </>
+            )}
           </div>
         </form>
       </div>

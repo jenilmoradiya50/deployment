@@ -239,6 +239,27 @@ export const api = {
     return await res.json();
   },
 
+  // Records: Quick Status Update (Completed, Pending, On Hold, Failed)
+  async updateRecordStatus(id, status) {
+    const res = await fetch(`${API_BASE}/records/${id}/status`, {
+      method: 'PATCH',
+      headers: authHeaders(),
+      body: JSON.stringify({ status })
+    });
+
+    if (res.status === 401) {
+      setStoredToken(null);
+      throw new Error('UNAUTHORIZED');
+    }
+
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.error || `Failed to update site status`);
+    }
+
+    return await res.json();
+  },
+
   // Records: Claim Site (Link to user)
   async claimRecord(id) {
     const res = await fetch(`${API_BASE}/records/${id}/claim`, {

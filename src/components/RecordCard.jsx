@@ -6,6 +6,7 @@ export default function RecordCard({
   onEdit,
   onDelete,
   onClaim,
+  onStatusChange,
   onRequestTransfer,
   onAcceptTransfer,
   onRejectTransfer,
@@ -17,8 +18,13 @@ export default function RecordCard({
 
   const isBranch = record.kind === 'Branch';
   const title = isBranch ? (record.dpCode || 'Branch Record') : (record.atmId || 'ATM Record');
-  const isWorking = record.working === 'Yes';
-  const isNotWorking = record.working === 'No';
+
+  // Status computation: Pending, Completed, On Hold, Failed
+  const status = record.deploymentStatus || (record.working === 'Yes' ? 'Completed' : (record.working === 'No' ? 'Failed' : 'Pending'));
+  const isCompleted = status === 'Completed';
+  const isPending = status === 'Pending';
+  const isOnHold = status === 'On Hold';
+  const isFailed = status === 'Failed';
 
   const role = (currentUser?.role || '').toLowerCase();
   const uname = (currentUser?.username || '').toLowerCase();
@@ -81,7 +87,7 @@ export default function RecordCard({
   };
 
   return (
-    <article className={`site-record-card ${isExpanded ? 'is-expanded' : 'is-compact'}`}>
+    <article className={`site-record-card ${isExpanded ? 'is-expanded' : 'is-compact'} status-${status.toLowerCase().replace(' ', '-')}`}>
       {/* Handover / Transfer Pending Banner */}
       {hasPendingTransfer && (isClaimedByMe || isAdminOrPM) && (
         <div className="site-transfer-banner">
@@ -162,13 +168,11 @@ export default function RecordCard({
           <div className="site-primary-row">
             <span className="site-kind-badge">{isBranch ? 'BRANCH' : 'ATM'}</span>
             <h3 className="site-title">{title}</h3>
-            <span
-              className={`site-status-pill ${
-                isWorking ? 'working' : isNotWorking ? 'issue' : 'unconfirmed'
-              }`}
-            >
+            
+            {/* Main Status Pill */}
+            <span className={`site-status-pill ${status.toLowerCase().replace(' ', '-')}`}>
               <span className="status-indicator-dot"></span>
-              {isWorking ? 'Working' : isNotWorking ? 'Not Working' : 'Pending Verification'}
+              {status === 'Completed' ? '🟢 Completed' : status === 'Pending' ? '⏳ Pending' : status === 'On Hold' ? '🟡 On Hold' : '🔴 Failed'}
             </span>
           </div>
         </div>
@@ -179,7 +183,7 @@ export default function RecordCard({
               type="button"
               className="card-action-icon edit-btn"
               onClick={() => onEdit(record)}
-              title="Edit site details"
+              title="Edit full site details"
             >
               ✏️ Edit
             </button>
@@ -228,15 +232,21 @@ export default function RecordCard({
           )}
         </div>
 
+        {/* ISP Status Pills in Compact View */}
         <div className="compact-circuits-row">
-          <span className="circuit-mini-badge" title={`BSNL IP: ${record.bsnlIp || 'N/A'}`}>
-            BSNL: {record.bsnlPing === 'Yes' ? '🟢 OK' : '🔴'}
+          {record.isDhcp === 'Yes' && (
+            <span className="circuit-mini-badge dhcp-badge" title="Branch utilizes DHCP for IP configuration">
+              📶 DHCP
+            </span>
+          )}
+          <span className={`circuit-mini-badge ${record.bsnlPresent === 'No' ? 'not-present' : ''}`} title={`BSNL IP: ${record.bsnlIp || 'N/A'}`}>
+            BSNL: {record.bsnlPresent === 'No' ? '⚪ N/A' : (record.bsnlPing === 'Yes' ? '🟢 OK' : '🔴')}
           </span>
-          <span className="circuit-mini-badge" title={`Jio IP: ${record.jioIp || 'N/A'}`}>
-            Jio: {record.jioPing === 'Yes' ? '🟢 OK' : '🔴'}
+          <span className={`circuit-mini-badge ${record.jioPresent === 'No' ? 'not-present' : ''}`} title={`Jio IP: ${record.jioIp || 'N/A'}`}>
+            Jio: {record.jioPresent === 'No' ? '⚪ N/A' : (record.jioPing === 'Yes' ? '🟢 OK' : '🔴')}
           </span>
-          <span className="circuit-mini-badge" title={`Airtel IP: ${record.airtelIp || 'N/A'}`}>
-            Airtel: {record.airtelPing === 'Yes' ? '🟢 OK' : '🔴'}
+          <span className={`circuit-mini-badge ${record.airtelPresent === 'No' ? 'not-present' : ''}`} title={`Airtel IP: ${record.airtelIp || 'N/A'}`}>
+            Airtel{record.airtelIs4G === 'Yes' ? ' (4G)' : ''}: {record.airtelPresent === 'No' ? '⚪ N/A' : (record.airtelPing === 'Yes' ? '🟢 OK' : '🔴')}
           </span>
         </div>
 
@@ -244,6 +254,52 @@ export default function RecordCard({
           <div className="compact-field">
             <span className="compact-lbl">LAN:</span>
             <code>{record.primaryLanIp} {record.lanIpPrefix || ''}</code>
+          </div>
+        )}
+
+        {/* Quick Lifecycle Action Buttons */}
+        {canEdit && (
+          <div className="card-status-quick-buttons" onClick={(e) => e.stopPropagation()}>
+            {!isCompleted && (
+              <button
+                type="button"
+                className="status-action-btn complete-btn"
+                onClick={() => onStatusChange && onStatusChange(record.id, 'Completed')}
+                title="Mark site deployment as Completed"
+              >
+                ✓ Completed
+              </button>
+            )}
+            {!isOnHold && (
+              <button
+                type="button"
+                className="status-action-btn hold-btn"
+                onClick={() => onStatusChange && onStatusChange(record.id, 'On Hold')}
+                title="Put site deployment on Hold"
+              >
+                ⏸ Hold
+              </button>
+            )}
+            {!isFailed && (
+              <button
+                type="button"
+                className="status-action-btn fail-btn"
+                onClick={() => onStatusChange && onStatusChange(record.id, 'Failed')}
+                title="Mark site deployment as Failed / Issue"
+              >
+                ✕ Failed
+              </button>
+            )}
+            {!isPending && (
+              <button
+                type="button"
+                className="status-action-btn pending-btn"
+                onClick={() => onStatusChange && onStatusChange(record.id, 'Pending')}
+                title="Shift site back to Pending queue"
+              >
+                ↺ Pending
+              </button>
+            )}
           </div>
         )}
 
@@ -258,55 +314,77 @@ export default function RecordCard({
 
       {/* FULL EXPANDED TECHNICAL DETAILS (Visible when expanded) */}
       {isExpanded && (
-        <div className="expanded-details-container">
-          {/* FE & Hardware Panel */}
-          <div className="site-section-panel fe-hardware-panel">
-            <div className="fe-row">
-              <div className="fe-col">
-                <span className="panel-mini-label">Field Engineer:</span>
-                <strong>{record.feName || 'Not Assigned'}</strong>
-                {record.feNumber && (
-                  <a href={`tel:${record.feNumber}`} className="fe-tel-link">
-                    📞 {record.feNumber}
-                  </a>
-                )}
+        <div className="site-expanded-details">
+          {/* Hardware & Physical Details */}
+          <div className="site-section-panel hardware-panel">
+            <div className="panel-header-sub">
+              <span>Hardware & Deployment</span>
+            </div>
+            <div className="hardware-info-grid">
+              <div className="hw-col">
+                <span className="hw-lbl">New SD-WAN S/N:</span>
+                <code className="hw-val highlight">{record.newDeviceSerial || 'Not recorded'}</code>
               </div>
-              <div className="fe-col">
-                <span className="panel-mini-label">UAT Form:</span>
-                <span className={`uat-badge ${record.uatSubmitted === 'Yes' ? 'submitted' : 'pending'}`}>
-                  {record.uatSubmitted === 'Yes' ? '✓ Submitted' : 'Pending'}
+              <div className="hw-col">
+                <span className="hw-lbl">Old Router Model:</span>
+                <span className="hw-val">{record.oldDeviceModel || '—'}</span>
+              </div>
+              <div className="hw-col">
+                <span className="hw-lbl">Old Router S/N:</span>
+                <code className="hw-val">{record.oldDeviceSerial || '—'}</code>
+              </div>
+              <div className="hw-col">
+                <span className="hw-lbl">UAT Form:</span>
+                <span className="hw-val">
+                  {record.uatSubmitted === 'Yes' ? (
+                    <strong className="uat-tag-ok">✓ Submitted {record.uatFormNo ? `(${record.uatFormNo})` : ''}</strong>
+                  ) : (
+                    <span className="uat-tag-pending">Pending</span>
+                  )}
                 </span>
-                {record.uatFormNo && <span className="uat-no">Ref: {record.uatFormNo}</span>}
-              </div>
-              <div className="fe-col">
-                <span className="panel-mini-label">New Device S/N:</span>
-                <span className="device-sn">{record.newDeviceSerial || '—'}</span>
-              </div>
-              <div className="fe-col">
-                <span className="panel-mini-label">Old Device:</span>
-                <span>{record.oldDeviceModel || '—'} {record.oldDeviceSerial ? `(S/N: ${record.oldDeviceSerial})` : ''}</span>
               </div>
             </div>
           </div>
 
-          {/* VLAN & Primary LAN Section */}
-          <div className="site-section-panel">
+          {/* LAN & VLAN Routing */}
+          <div className="site-section-panel lan-panel">
             <div className="panel-header-sub">
-              <span>Local Network & VLAN</span>
-              <span className={`vlan-chip ${record.vlanConfigured === 'Yes' ? 'active' : 'none'}`}>
-                VLAN: {record.vlanConfigured === 'Yes' ? `${record.vlanDetails || 'Configured'} (${record.vlanRemoved || 'Not Removed'})` : 'No VLAN'}
-              </span>
+              <span>LAN Network & Subnets</span>
+              {record.isDhcp === 'Yes' && (
+                <span className="dhcp-pill-badge">📶 DHCP Enabled</span>
+              )}
             </div>
 
-            <div className="chips-flow-row">
-              {renderIpChip('Primary LAN IP', record.primaryLanIp, `${record.id}-lan`, record.lanIpPrefix)}
-              {renderIpChip('Primary Gateway', record.primaryLanGateway, `${record.id}-langw`)}
-              {record.atmIp && renderIpChip('ATM IP', record.atmIp, `${record.id}-atmip`)}
+            <div className="lan-info-grid">
+              <div className="lan-col">
+                <span className="lan-lbl">Primary LAN IP:</span>
+                <code className="lan-val">{record.primaryLanIp ? `${record.primaryLanIp} ${record.lanIpPrefix || ''}` : '—'}</code>
+              </div>
+              <div className="lan-col">
+                <span className="lan-lbl">Primary Gateway:</span>
+                <code className="lan-val">{record.primaryLanGateway || '—'}</code>
+              </div>
+              <div className="lan-col">
+                <span className="lan-lbl">VLAN Configured:</span>
+                <span className="lan-val">
+                  {record.vlanConfigured === 'Yes' ? (
+                    <span className="vlan-tag-active">✓ {record.vlanDetails || 'VLAN Configured'}</span>
+                  ) : (
+                    'No VLAN'
+                  )}
+                </span>
+              </div>
+              {record.vlanConfigured === 'Yes' && (
+                <div className="lan-col">
+                  <span className="lan-lbl">Old VLAN Status:</span>
+                  <span className="lan-val">{record.vlanRemoved || 'Not Removed'}</span>
+                </div>
+              )}
             </div>
 
-            {/* Secondary LAN IPs (up to 3) */}
-            {Array.isArray(record.secondaryLanIps) && record.secondaryLanIps.length > 0 && (
-              <div className="secondary-lan-chips-box">
+            {/* Dynamic Secondary LAN IPs */}
+            {record.secondaryLanIps && record.secondaryLanIps.length > 0 && (
+              <div className="secondary-lans-block">
                 <span className="secondary-lan-title">Secondary LAN IPs ({record.secondaryLanIps.length}/3):</span>
                 <div className="chips-flow-row">
                   {record.secondaryLanIps.map((sec, idx) => (
@@ -331,11 +409,21 @@ export default function RecordCard({
               <div className="circuit-row">
                 <div className="circuit-id-col">
                   <span className="isp-badge bsnl">BSNL</span>
-                  {renderPingBadge(record.bsnlPing)}
+                  {record.bsnlPresent === 'No' ? (
+                    <span className="not-present-badge">Not Present</span>
+                  ) : (
+                    renderPingBadge(record.bsnlPing)
+                  )}
                 </div>
                 <div className="circuit-chips-col">
-                  {renderIpChip('IP', record.bsnlIp, `${record.id}-bsnlip`)}
-                  {renderIpChip('GW', record.bsnlGateway, `${record.id}-bsnlgw`)}
+                  {record.bsnlPresent === 'No' ? (
+                    <span className="dim-sub-text">⚪ Circuit not present at this branch</span>
+                  ) : (
+                    <>
+                      {renderIpChip('IP', record.bsnlIp, `${record.id}-bsnlip`)}
+                      {renderIpChip('GW', record.bsnlGateway, `${record.id}-bsnlgw`)}
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -343,24 +431,48 @@ export default function RecordCard({
               <div className="circuit-row">
                 <div className="circuit-id-col">
                   <span className="isp-badge jio">Jio</span>
-                  {renderPingBadge(record.jioPing)}
+                  {record.jioPresent === 'No' ? (
+                    <span className="not-present-badge">Not Present</span>
+                  ) : (
+                    renderPingBadge(record.jioPing)
+                  )}
                 </div>
                 <div className="circuit-chips-col">
-                  {renderIpChip('IP', record.jioIp, `${record.id}-jioip`)}
-                  {renderIpChip('GW', record.jioGateway, `${record.id}-jiogw`)}
+                  {record.jioPresent === 'No' ? (
+                    <span className="dim-sub-text">⚪ Circuit not present at this branch</span>
+                  ) : (
+                    <>
+                      {renderIpChip('IP', record.jioIp, `${record.id}-jioip`)}
+                      {renderIpChip('GW', record.jioGateway, `${record.id}-jiogw`)}
+                    </>
+                  )}
                 </div>
               </div>
 
               {/* Airtel */}
               <div className="circuit-row">
                 <div className="circuit-id-col">
-                  <span className="isp-badge airtel">Airtel</span>
-                  {renderPingBadge(record.airtelPing)}
+                  <span className="isp-badge airtel">
+                    Airtel{record.airtelIs4G === 'Yes' ? ' (4G)' : ''}
+                  </span>
+                  {record.airtelPresent === 'No' ? (
+                    <span className="not-present-badge">Not Present</span>
+                  ) : (
+                    renderPingBadge(record.airtelPing)
+                  )}
                 </div>
                 <div className="circuit-chips-col">
-                  {renderIpChip('IP', record.airtelIp, `${record.id}-airtelip`)}
-                  {renderIpChip('GW', record.airtelGateway, `${record.id}-airtelgw`)}
-                  {renderIpChip('CE IP', record.ceIp, `${record.id}-ceip`)}
+                  {record.airtelPresent === 'No' ? (
+                    <span className="dim-sub-text">⚪ Circuit not present at this branch</span>
+                  ) : (
+                    <>
+                      {record.airtelIs4G === 'Yes' && record.airtelLoopbackIp && (
+                        renderIpChip('4G Loopback', record.airtelLoopbackIp, `${record.id}-airtelloop`)
+                      )}
+                      {renderIpChip('IP', record.airtelIp, `${record.id}-airtelip`)}
+                      {renderIpChip('GW', record.airtelGateway, `${record.id}-airtelgw`)}
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -380,44 +492,47 @@ export default function RecordCard({
                 Added in CS: {record.csAdded || record.mpAdded || 'No'}
               </span>
               <span className={`check-chip ${record.deviceOnline === 'Yes' ? 'done' : 'pending'}`}>
-                Device Online: {record.deviceOnline || 'No'}
-              </span>
-              <span className={`check-chip ${record.mailSent === 'Yes' ? 'done' : 'pending'}`}>
-                Mail Sent: {record.mailSent || 'No'}
-              </span>
-              <span className={`check-chip ${record.dcMail === 'Received' ? 'done' : 'pending'}`}>
-                DC Mail: {record.dcMail || 'No'}
-              </span>
-              <span className={`check-chip ${record.drcMail === 'Received' ? 'done' : 'pending'}`}>
-                DRC Mail: {record.drcMail || 'No'}
+                Online: {record.deviceOnline || 'No'}
               </span>
               <span className={`check-chip ${record.cablesConnected === 'Connected' ? 'done' : 'pending'}`}>
-                Cables: {record.cablesConnected || 'Pending'}
+                Cables: {record.cablesConnected || 'Not connected'}
+              </span>
+              <span className={`check-chip ${record.mailSent === 'Yes' ? 'done' : 'pending'}`}>
+                Handover Mail: {record.mailSent || 'No'}
+              </span>
+              <span className={`check-chip ${record.dcMail === 'Received' ? 'done' : 'pending'}`}>
+                DC Mail: {record.dcMail || 'Not received'}
+              </span>
+              <span className={`check-chip ${record.drcMail === 'Received' ? 'done' : 'pending'}`}>
+                DRC Mail: {record.drcMail || 'Not received'}
               </span>
             </div>
           </div>
 
-          {/* Notes */}
+          {/* Notes if any */}
           {record.notes && (
             <div className="site-section-panel notes-panel">
-              <span className="panel-mini-label">Deployment Notes:</span>
-              <p className="record-notes-text">{record.notes}</p>
+              <div className="panel-header-sub">
+                <span>Engineering Remarks</span>
+              </div>
+              <p className="site-notes-text">{record.notes}</p>
             </div>
           )}
 
           {/* Footer Metadata */}
           <div className="site-card-footer">
-            <span className="timestamp-info">Updated {formattedDate}</span>
-            {onExport && (
-              <button
-                type="button"
-                className="export-single-btn"
-                onClick={() => onExport(record)}
-                title="Export technical slip for this site"
-              >
-                📄 Export Slip
-              </button>
-            )}
+            <span className="last-sync-meta">Updated: {formattedDate}</span>
+            <div className="footer-actions">
+              {onExport && (
+                <button
+                  type="button"
+                  className="card-text-action"
+                  onClick={() => onExport(record)}
+                >
+                  📥 Export Record
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

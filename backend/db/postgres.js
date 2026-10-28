@@ -61,16 +61,23 @@ let memRecords = [
     ],
     atm_ip: '10.24.120.50',
     atm_gateway: '10.24.120.51',
+    is_dhcp: 'No',
+    bsnl_present: 'Yes',
     bsnl_ip: '192.168.10.2',
     bsnl_gateway: '192.168.10.1',
     bsnl_ping: 'Yes',
+    jio_present: 'Yes',
     jio_ip: '172.16.20.2',
     jio_gateway: '172.16.20.1',
     jio_ping: 'Yes',
+    airtel_present: 'Yes',
+    airtel_is_4g: 'No',
+    airtel_loopback_ip: '',
     airtel_ip: '10.100.5.2',
     airtel_gateway: '10.100.5.1',
-    ce_ip: '10.100.5.254',
+    ce_ip: '',
     airtel_ping: 'Yes',
+    deployment_status: 'Completed',
     configuration: 'Completed',
     mp_added: 'Yes',
     device_online: 'Yes',
@@ -180,12 +187,18 @@ function formatRecordRow(row) {
       : (typeof row.secondary_lan_ips === 'string' ? JSON.parse(row.secondary_lan_ips || '[]') : []),
     atmIp: row.atm_ip || '',
     atmGateway: row.atm_gateway || '',
+    isDhcp: row.is_dhcp || 'No',
+    bsnlPresent: row.bsnl_present || 'Yes',
     bsnlIp: row.bsnl_ip || '',
     bsnlGateway: row.bsnl_gateway || '',
     bsnlPing: row.bsnl_ping || 'No',
+    jioPresent: row.jio_present || 'Yes',
     jioIp: row.jio_ip || '',
     jioGateway: row.jio_gateway || '',
     jioPing: row.jio_ping || 'No',
+    airtelPresent: row.airtel_present || 'Yes',
+    airtelIs4G: row.airtel_is_4g || 'No',
+    airtelLoopbackIp: row.airtel_loopback_ip || '',
     airtelIp: row.airtel_ip || '',
     airtelGateway: row.airtel_gateway || '',
     ceIp: row.ce_ip || '',
@@ -199,6 +212,7 @@ function formatRecordRow(row) {
     drcMail: row.drc_mail || 'Not received',
     cablesConnected: row.cables_connected || 'Not connected',
     working: row.working || 'No',
+    deploymentStatus: row.deployment_status || (row.working === 'Yes' ? 'Completed' : (row.working === 'No' ? 'Failed' : 'Pending')),
     uatSubmitted: row.uat_submitted || 'No',
     uatFormNo: row.uat_form_no || '',
     claimedBy: row.claimed_by || '',
@@ -263,16 +277,23 @@ async function initDatabase() {
             secondary_lan_ips JSONB DEFAULT '[]'::jsonb,
             atm_ip VARCHAR(50) DEFAULT '',
             atm_gateway VARCHAR(50) DEFAULT '',
+            is_dhcp VARCHAR(10) DEFAULT 'No',
+            bsnl_present VARCHAR(10) DEFAULT 'Yes',
             bsnl_ip VARCHAR(50) DEFAULT '',
             bsnl_gateway VARCHAR(50) DEFAULT '',
             bsnl_ping VARCHAR(10) DEFAULT 'No',
+            jio_present VARCHAR(10) DEFAULT 'Yes',
             jio_ip VARCHAR(50) DEFAULT '',
             jio_gateway VARCHAR(50) DEFAULT '',
             jio_ping VARCHAR(10) DEFAULT 'No',
+            airtel_present VARCHAR(10) DEFAULT 'Yes',
+            airtel_is_4g VARCHAR(10) DEFAULT 'No',
+            airtel_loopback_ip VARCHAR(50) DEFAULT '',
             airtel_ip VARCHAR(50) DEFAULT '',
             airtel_gateway VARCHAR(50) DEFAULT '',
             ce_ip VARCHAR(50) DEFAULT '',
             airtel_ping VARCHAR(10) DEFAULT 'No',
+            deployment_status VARCHAR(30) DEFAULT 'Pending',
             configuration VARCHAR(50) DEFAULT 'Not completed',
             mp_added VARCHAR(10) DEFAULT 'No',
             device_online VARCHAR(10) DEFAULT 'No',
@@ -296,11 +317,24 @@ async function initDatabase() {
           );
         `);
 
-        // Migration safety: ensure transfer columns exist on existing databases
+        // Migration safety: ensure new columns exist on existing databases
         await client.query(`
           ALTER TABLE records ADD COLUMN IF NOT EXISTS transfer_requested_by VARCHAR(100) DEFAULT '';
           ALTER TABLE records ADD COLUMN IF NOT EXISTS transfer_requested_by_name VARCHAR(150) DEFAULT '';
           ALTER TABLE records ADD COLUMN IF NOT EXISTS transfer_requested_at TIMESTAMP WITH TIME ZONE;
+          ALTER TABLE records ADD COLUMN IF NOT EXISTS deployment_status VARCHAR(30) DEFAULT 'Pending';
+          ALTER TABLE records ADD COLUMN IF NOT EXISTS is_dhcp VARCHAR(10) DEFAULT 'No';
+          ALTER TABLE records ADD COLUMN IF NOT EXISTS bsnl_present VARCHAR(10) DEFAULT 'Yes';
+          ALTER TABLE records ADD COLUMN IF NOT EXISTS jio_present VARCHAR(10) DEFAULT 'Yes';
+          ALTER TABLE records ADD COLUMN IF NOT EXISTS airtel_present VARCHAR(10) DEFAULT 'Yes';
+          ALTER TABLE records ADD COLUMN IF NOT EXISTS airtel_is_4g VARCHAR(10) DEFAULT 'No';
+          ALTER TABLE records ADD COLUMN IF NOT EXISTS airtel_loopback_ip VARCHAR(50) DEFAULT '';
+        `).catch((e) => console.warn('Migration query warn:', e.message));
+
+        // Auto-migrate legacy working status
+        await client.query(`
+          UPDATE records SET deployment_status = 'Completed' WHERE working = 'Yes' AND (deployment_status IS NULL OR deployment_status = '' OR deployment_status = 'Pending');
+          UPDATE records SET deployment_status = 'Failed' WHERE working = 'No' AND (deployment_status IS NULL OR deployment_status = '');
         `).catch(() => {});
 
         // 3. Ensure Default Admin exists & password hash is valid
@@ -668,9 +702,14 @@ const db = {
         let query = 'SELECT * FROM records WHERE 1=1';
         const params = [];
 
-        if (filter.kind) {
+        if (filter.kind && filter.kind !== 'All') {
           params.push(filter.kind);
           query += ` AND kind = $${params.length}`;
+        }
+
+        if (filter.status && filter.status !== 'all') {
+          params.push(filter.status);
+          query += ` AND LOWER(deployment_status) = LOWER($${params.length})`;
         }
 
         if (filter.working) {
@@ -710,7 +749,11 @@ const db = {
 
     // In-memory fallback
     return memRecords.filter(r => {
-      if (filter.kind && r.kind !== filter.kind) return false;
+      if (filter.kind && filter.kind !== 'All' && r.kind !== filter.kind) return false;
+      if (filter.status && filter.status !== 'all') {
+        const recStatus = (r.deployment_status || (r.working === 'Yes' ? 'Completed' : (r.working === 'No' ? 'Failed' : 'Pending'))).toLowerCase();
+        if (recStatus !== filter.status.toLowerCase()) return false;
+      }
       if (filter.working && r.working !== filter.working) return false;
       if (filter.claimedBy && r.claimed_by !== filter.claimedBy) return false;
       if (filter.search) {
@@ -749,6 +792,16 @@ const db = {
     const claimedBy = data.claimedBy || author;
     const claimedByName = data.claimedByName || authorName;
 
+    const deploymentStatus = data.deploymentStatus || (data.working === 'Yes' ? 'Completed' : (data.working === 'No' ? 'Failed' : 'Pending'));
+    const working = deploymentStatus === 'Completed' ? 'Yes' : (deploymentStatus === 'Failed' ? 'No' : (data.working || 'No'));
+
+    const isDhcp = data.isDhcp || 'No';
+    const bsnlPresent = data.bsnlPresent || 'Yes';
+    const jioPresent = data.jioPresent || 'Yes';
+    const airtelPresent = data.airtelPresent || 'Yes';
+    const airtelIs4G = data.airtelIs4G || 'No';
+    const airtelLoopbackIp = data.airtelLoopbackIp || '';
+
     const p = getPool();
     if (p && isInitialized) {
       try {
@@ -759,9 +812,11 @@ const db = {
             vlan_configured, vlan_details, vlan_removed,
             primary_lan_ip, lan_ip_prefix, primary_lan_gateway, secondary_lan_ips,
             atm_ip, atm_gateway,
-            bsnl_ip, bsnl_gateway, bsnl_ping,
-            jio_ip, jio_gateway, jio_ping,
-            airtel_ip, airtel_gateway, ce_ip, airtel_ping,
+            is_dhcp,
+            bsnl_present, bsnl_ip, bsnl_gateway, bsnl_ping,
+            jio_present, jio_ip, jio_gateway, jio_ping,
+            airtel_present, airtel_is_4g, airtel_loopback_ip, airtel_ip, airtel_gateway, ce_ip, airtel_ping,
+            deployment_status,
             configuration, mp_added, device_online, mail_sent, dc_mail, drc_mail, cables_connected, working,
             uat_submitted, uat_form_no, claimed_by, claimed_by_name, notes, created_by, updated_by
           ) VALUES (
@@ -770,11 +825,13 @@ const db = {
             $10, $11, $12,
             $13, $14, $15, $16,
             $17, $18,
-            $19, $20, $21,
-            $22, $23, $24,
-            $25, $26, $27, $28,
-            $29, $30, $31, $32, $33, $34, $35, $36,
-            $37, $38, $39, $40, $41, $42, $43
+            $19,
+            $20, $21, $22, $23,
+            $24, $25, $26, $27,
+            $28, $29, $30, $31, $32, $33, $34,
+            $35,
+            $36, $37, $38, $39, $40, $41, $42, $43,
+            $44, $45, $46, $47, $48, $49, $50
           ) RETURNING *;
         `;
 
@@ -784,11 +841,13 @@ const db = {
           data.vlanConfigured || 'No', data.vlanDetails || '', data.vlanRemoved || 'Not Removed',
           data.primaryLanIp || data.lanIp || '', data.lanIpPrefix || '', data.primaryLanGateway || data.lanGateway || '', JSON.stringify(secondaryIps),
           data.atmIp || '', data.atmGateway || '',
-          data.bsnlIp || '', data.bsnlGateway || '', data.bsnlPing || 'No',
-          data.jioIp || '', data.jioGateway || '', data.jioPing || 'No',
-          data.airtelIp || '', data.airtelGateway || '', data.ceIp || '', data.airtelPing || 'No',
+          isDhcp,
+          bsnlPresent, data.bsnlIp || '', data.bsnlGateway || '', data.bsnlPing || 'No',
+          jioPresent, data.jioIp || '', data.jioGateway || '', data.jioPing || 'No',
+          airtelPresent, airtelIs4G, airtelLoopbackIp, data.airtelIp || '', data.airtelGateway || '', data.ceIp || '', data.airtelPing || 'No',
+          deploymentStatus,
           data.configuration || 'Not completed', data.mpAdded || data.mp || 'No', data.deviceOnline || data.online || 'No', data.mailSent || data.mail || 'No',
-          data.dcMail || 'Not received', data.drcMail || 'Not received', data.cablesConnected || data.cables || 'Not connected', data.working || 'No',
+          data.dcMail || 'Not received', data.drcMail || 'Not received', data.cablesConnected || data.cables || 'Not connected', working,
           data.uatSubmitted || 'No', data.uatFormNo || '', claimedBy, claimedByName, data.notes || '', author, author
         ];
 
@@ -820,16 +879,23 @@ const db = {
       secondary_lan_ips: secondaryIps,
       atm_ip: data.atmIp || '',
       atm_gateway: data.atmGateway || '',
+      is_dhcp: isDhcp,
+      bsnl_present: bsnlPresent,
       bsnl_ip: data.bsnlIp || '',
       bsnl_gateway: data.bsnlGateway || '',
       bsnl_ping: data.bsnlPing || 'No',
+      jio_present: jioPresent,
       jio_ip: data.jioIp || '',
       jio_gateway: data.jioGateway || '',
       jio_ping: data.jioPing || 'No',
+      airtel_present: airtelPresent,
+      airtel_is_4g: airtelIs4G,
+      airtel_loopback_ip: airtelLoopbackIp,
       airtel_ip: data.airtelIp || '',
       airtel_gateway: data.airtelGateway || '',
-      ce_ip: data.ce_ip || '',
+      ce_ip: data.ceIp || '',
       airtel_ping: data.airtelPing || 'No',
+      deployment_status: deploymentStatus,
       configuration: data.configuration || 'Not completed',
       mp_added: data.mpAdded || data.mp || 'No',
       device_online: data.deviceOnline || data.online || 'No',
@@ -837,7 +903,7 @@ const db = {
       dc_mail: data.dcMail || 'Not received',
       drc_mail: data.drcMail || 'Not received',
       cables_connected: data.cablesConnected || data.cables || 'Not connected',
-      working: data.working || 'No',
+      working: working,
       uat_submitted: data.uatSubmitted || 'No',
       uat_form_no: data.uatFormNo || '',
       claimed_by: claimedBy,
@@ -868,6 +934,9 @@ const db = {
         const existing = await p.query('SELECT * FROM records WHERE id = $1', [id]);
         if (existing.rows.length === 0) return null;
 
+        const depStatus = updates.deploymentStatus || (updates.working === 'Yes' ? 'Completed' : (updates.working === 'No' ? 'Failed' : null));
+        const working = updates.working || (updates.deploymentStatus === 'Completed' ? 'Yes' : (updates.deploymentStatus === 'Failed' ? 'No' : null));
+
         const sql = `
           UPDATE records SET
             kind = COALESCE($2, kind),
@@ -887,30 +956,37 @@ const db = {
             secondary_lan_ips = COALESCE($16, secondary_lan_ips),
             atm_ip = COALESCE($17, atm_ip),
             atm_gateway = COALESCE($18, atm_gateway),
-            bsnl_ip = COALESCE($19, bsnl_ip),
-            bsnl_gateway = COALESCE($20, bsnl_gateway),
-            bsnl_ping = COALESCE($21, bsnl_ping),
-            jio_ip = COALESCE($22, jio_ip),
-            jio_gateway = COALESCE($23, jio_gateway),
-            jio_ping = COALESCE($24, jio_ping),
-            airtel_ip = COALESCE($25, airtel_ip),
-            airtel_gateway = COALESCE($26, airtel_gateway),
-            ce_ip = COALESCE($27, ce_ip),
-            airtel_ping = COALESCE($28, airtel_ping),
-            configuration = COALESCE($29, configuration),
-            mp_added = COALESCE($30, mp_added),
-            device_online = COALESCE($31, device_online),
-            mail_sent = COALESCE($32, mail_sent),
-            dc_mail = COALESCE($33, dc_mail),
-            drc_mail = COALESCE($34, drc_mail),
-            cables_connected = COALESCE($35, cables_connected),
-            working = COALESCE($36, working),
-            uat_submitted = COALESCE($37, uat_submitted),
-            uat_form_no = COALESCE($38, uat_form_no),
-            claimed_by = COALESCE($39, claimed_by),
-            claimed_by_name = COALESCE($40, claimed_by_name),
-            notes = COALESCE($41, notes),
-            updated_by = $42,
+            is_dhcp = COALESCE($19, is_dhcp),
+            bsnl_present = COALESCE($20, bsnl_present),
+            bsnl_ip = COALESCE($21, bsnl_ip),
+            bsnl_gateway = COALESCE($22, bsnl_gateway),
+            bsnl_ping = COALESCE($23, bsnl_ping),
+            jio_present = COALESCE($24, jio_present),
+            jio_ip = COALESCE($25, jio_ip),
+            jio_gateway = COALESCE($26, jio_gateway),
+            jio_ping = COALESCE($27, jio_ping),
+            airtel_present = COALESCE($28, airtel_present),
+            airtel_is_4g = COALESCE($29, airtel_is_4g),
+            airtel_loopback_ip = COALESCE($30, airtel_loopback_ip),
+            airtel_ip = COALESCE($31, airtel_ip),
+            airtel_gateway = COALESCE($32, airtel_gateway),
+            ce_ip = COALESCE($33, ce_ip),
+            airtel_ping = COALESCE($34, airtel_ping),
+            deployment_status = COALESCE($35, deployment_status),
+            configuration = COALESCE($36, configuration),
+            mp_added = COALESCE($37, mp_added),
+            device_online = COALESCE($38, device_online),
+            mail_sent = COALESCE($39, mail_sent),
+            dc_mail = COALESCE($40, dc_mail),
+            drc_mail = COALESCE($41, drc_mail),
+            cables_connected = COALESCE($42, cables_connected),
+            working = COALESCE($43, working),
+            uat_submitted = COALESCE($44, uat_submitted),
+            uat_form_no = COALESCE($45, uat_form_no),
+            claimed_by = COALESCE($46, claimed_by),
+            claimed_by_name = COALESCE($47, claimed_by_name),
+            notes = COALESCE($48, notes),
+            updated_by = $49,
             updated_at = CURRENT_TIMESTAMP
           WHERE id = $1
           RETURNING *;
@@ -923,11 +999,13 @@ const db = {
           updates.primaryLanIp ?? updates.lanIp, updates.lanIpPrefix, updates.primaryLanGateway ?? updates.lanGateway,
           secondaryIps !== undefined ? JSON.stringify(secondaryIps) : null,
           updates.atmIp, updates.atmGateway,
-          updates.bsnlIp, updates.bsnlGateway, updates.bsnlPing,
-          updates.jioIp, updates.jioGateway, updates.jioPing,
-          updates.airtelIp, updates.airtelGateway, updates.ceIp, updates.airtelPing,
+          updates.isDhcp,
+          updates.bsnlPresent, updates.bsnlIp, updates.bsnlGateway, updates.bsnlPing,
+          updates.jioPresent, updates.jioIp, updates.jioGateway, updates.jioPing,
+          updates.airtelPresent, updates.airtelIs4G, updates.airtelLoopbackIp, updates.airtelIp, updates.airtelGateway, updates.ceIp, updates.airtelPing,
+          depStatus,
           updates.configuration, updates.mpAdded ?? updates.mp, updates.deviceOnline ?? updates.online, updates.mailSent ?? updates.mail,
-          updates.dcMail, updates.drcMail, updates.cablesConnected ?? updates.cables, updates.working,
+          updates.dcMail, updates.drcMail, updates.cablesConnected ?? updates.cables, working,
           updates.uatSubmitted, updates.uatFormNo, updates.claimedBy, updates.claimedByName,
           updates.notes, author
         ];
@@ -943,6 +1021,9 @@ const db = {
     const idx = memRecords.findIndex(r => r.id === id);
     if (idx === -1) return null;
     const ex = memRecords[idx];
+    const depStatus = updates.deploymentStatus || (updates.working === 'Yes' ? 'Completed' : (updates.working === 'No' ? 'Failed' : ex.deployment_status));
+    const working = updates.working || (updates.deploymentStatus === 'Completed' ? 'Yes' : (updates.deploymentStatus === 'Failed' ? 'No' : ex.working));
+
     const updated = {
       ...ex,
       kind: updates.kind ?? ex.kind,
@@ -962,16 +1043,23 @@ const db = {
       secondary_lan_ips: secondaryIps !== undefined ? secondaryIps : ex.secondary_lan_ips,
       atm_ip: updates.atmIp ?? ex.atm_ip,
       atm_gateway: updates.atmGateway ?? ex.atm_gateway,
+      is_dhcp: updates.isDhcp ?? ex.is_dhcp,
+      bsnl_present: updates.bsnlPresent ?? ex.bsnl_present,
       bsnl_ip: updates.bsnlIp ?? ex.bsnl_ip,
       bsnl_gateway: updates.bsnlGateway ?? ex.bsnl_gateway,
       bsnl_ping: updates.bsnlPing ?? ex.bsnl_ping,
+      jio_present: updates.jioPresent ?? ex.jio_present,
       jio_ip: updates.jioIp ?? ex.jio_ip,
       jio_gateway: updates.jioGateway ?? ex.jio_gateway,
       jio_ping: updates.jioPing ?? ex.jio_ping,
+      airtel_present: updates.airtelPresent ?? ex.airtel_present,
+      airtel_is_4g: updates.airtelIs4G ?? ex.airtel_is_4g,
+      airtel_loopback_ip: updates.airtelLoopbackIp ?? ex.airtel_loopback_ip,
       airtel_ip: updates.airtelIp ?? ex.airtel_ip,
       airtel_gateway: updates.airtelGateway ?? ex.airtel_gateway,
       ce_ip: updates.ceIp ?? ex.ce_ip,
       airtel_ping: updates.airtelPing ?? ex.airtel_ping,
+      deployment_status: depStatus,
       configuration: updates.configuration ?? ex.configuration,
       mp_added: (updates.mpAdded ?? updates.mp) ?? ex.mp_added,
       device_online: (updates.deviceOnline ?? updates.online) ?? ex.device_online,
@@ -979,7 +1067,7 @@ const db = {
       dc_mail: updates.dcMail ?? ex.dc_mail,
       drc_mail: updates.drcMail ?? ex.drc_mail,
       cables_connected: (updates.cablesConnected ?? updates.cables) ?? ex.cables_connected,
-      working: updates.working ?? ex.working,
+      working: working,
       uat_submitted: updates.uatSubmitted ?? ex.uat_submitted,
       uat_form_no: updates.uatFormNo ?? ex.uat_form_no,
       claimed_by: updates.claimedBy ?? ex.claimed_by,
@@ -990,6 +1078,16 @@ const db = {
     };
     memRecords[idx] = updated;
     return formatRecordRow(updated);
+  },
+
+  // Fast Status Updater: Pending, Completed, On Hold, Failed
+  async updateRecordStatus(id, status, user = {}) {
+    const valid = ['Pending', 'Completed', 'On Hold', 'Failed'];
+    if (!valid.includes(status)) {
+      throw new Error(`Invalid status: ${status}. Must be one of: ${valid.join(', ')}`);
+    }
+    const working = status === 'Completed' ? 'Yes' : (status === 'Failed' ? 'No' : 'No');
+    return this.updateRecord(id, { deploymentStatus: status, working }, user);
   },
 
   // Records: Delete
@@ -1150,32 +1248,37 @@ const db = {
     const p = getPool();
     if (p && isInitialized) {
       try {
-        const [tot, brTot, brOk, atmTot, atmOk] = await Promise.all([
+        const [tot, compQ, pendQ, holdQ, failQ, brTot, atmTot] = await Promise.all([
           p.query('SELECT COUNT(*) FROM records'),
+          p.query("SELECT COUNT(*) FROM records WHERE deployment_status = 'Completed' OR (deployment_status IS NULL AND working = 'Yes')"),
+          p.query("SELECT COUNT(*) FROM records WHERE deployment_status = 'Pending' OR (deployment_status IS NULL AND working != 'Yes' AND working != 'No')"),
+          p.query("SELECT COUNT(*) FROM records WHERE deployment_status = 'On Hold'"),
+          p.query("SELECT COUNT(*) FROM records WHERE deployment_status = 'Failed' OR (deployment_status IS NULL AND working = 'No')"),
           p.query("SELECT COUNT(*) FROM records WHERE kind = 'Branch'"),
-          p.query("SELECT COUNT(*) FROM records WHERE kind = 'Branch' AND working = 'Yes'"),
-          p.query("SELECT COUNT(*) FROM records WHERE kind = 'ATM'"),
-          p.query("SELECT COUNT(*) FROM records WHERE kind = 'ATM' AND working = 'Yes'")
+          p.query("SELECT COUNT(*) FROM records WHERE kind = 'ATM'")
         ]);
 
         const total = parseInt(tot.rows[0].count, 10);
+        const completed = parseInt(compQ.rows[0].count, 10);
+        const pending = parseInt(pendQ.rows[0].count, 10);
+        const onHold = parseInt(holdQ.rows[0].count, 10);
+        const failed = parseInt(failQ.rows[0].count, 10);
         const branchTotal = parseInt(brTot.rows[0].count, 10);
-        const branchWorking = parseInt(brOk.rows[0].count, 10);
         const atmTotal = parseInt(atmTot.rows[0].count, 10);
-        const atmWorking = parseInt(atmOk.rows[0].count, 10);
 
         return {
           total,
+          completed,
+          pending,
+          onHold,
+          failed,
           database: 'PostgreSQL Cloud Database (Supabase / Vercel Postgres)',
           branch: {
             total: branchTotal,
-            working: branchWorking,
-            pending: Math.max(0, branchTotal - branchWorking)
+            working: completed
           },
           atm: {
-            total: atmTotal,
-            working: atmWorking,
-            pending: Math.max(0, atmTotal - atmWorking)
+            total: atmTotal
           }
         };
       } catch (err) {
@@ -1186,18 +1289,25 @@ const db = {
     // In-memory stats
     const branch = memRecords.filter(r => r.kind === 'Branch');
     const atm = memRecords.filter(r => r.kind === 'ATM');
+    const total = memRecords.length;
+    const completed = memRecords.filter(r => r.deployment_status === 'Completed' || (!r.deployment_status && r.working === 'Yes')).length;
+    const onHold = memRecords.filter(r => r.deployment_status === 'On Hold').length;
+    const failed = memRecords.filter(r => r.deployment_status === 'Failed' || (!r.deployment_status && r.working === 'No')).length;
+    const pending = Math.max(0, total - completed - onHold - failed);
+
     return {
-      total: memRecords.length,
+      total,
+      completed,
+      pending,
+      onHold,
+      failed,
       database: 'In-Memory (Awaiting DATABASE_URL / Supabase)',
       branch: {
         total: branch.length,
-        working: branch.filter(r => r.working === 'Yes').length,
-        pending: branch.filter(r => r.working !== 'Yes').length
+        working: completed
       },
       atm: {
-        total: atm.length,
-        working: atm.filter(r => r.working === 'Yes').length,
-        pending: atm.filter(r => r.working !== 'Yes').length
+        total: atmTotal
       }
     };
   }

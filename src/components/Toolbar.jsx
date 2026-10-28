@@ -80,15 +80,16 @@ export default function Toolbar({
 
         {/* Status Filter */}
         <select
-          className="filter-dropdown"
+          className="filter-dropdown status-filter-dropdown"
           value={statusFilter}
           onChange={(e) => onStatusFilterChange(e.target.value)}
-          aria-label="Filter by Working Status"
+          aria-label="Filter by Deployment Status"
         >
           <option value="all">Status: All</option>
-          <option value="working">🟢 Working</option>
-          <option value="notWorking">🔴 Not Working</option>
-          <option value="pending">⏳ Pending</option>
+          <option value="pending">⏳ Pending Queue</option>
+          <option value="completed">🟢 Completed</option>
+          <option value="onHold">🟡 On Hold</option>
+          <option value="failed">🔴 Failed / Issues</option>
         </select>
 
         {/* Ownership & Specific User Filter */}
