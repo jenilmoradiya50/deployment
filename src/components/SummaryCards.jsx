@@ -8,8 +8,8 @@ export default function SummaryCards({ kind, totalKind, doneKind, totalAll }) {
     <div className="summary-cards-grid">
       <div className="kpi-card">
         <div className="kpi-top">
-          <span className="kpi-title">Total {kind} Sites</span>
-          <span className="kpi-icon-badge">🏢</span>
+          <span className="kpi-title">{kind === 'All' ? 'Total Deployments' : `Total ${kind} Sites`}</span>
+          <span className="kpi-icon-badge">{kind === 'ATM' ? '🏧' : '🏢'}</span>
         </div>
         <div className="kpi-value">{totalKind}</div>
         <div className="kpi-subtitle">Managed deployments</div>

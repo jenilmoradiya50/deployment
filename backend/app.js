@@ -92,14 +92,34 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
   }
 });
 
+// Self Profile Update (Any logged-in user can update their name, phone, password)
+app.put('/api/auth/profile', authMiddleware, async (req, res) => {
+  try {
+    const { name, phone, password } = req.body || {};
+    const updated = await db.updateProfile(req.user.id, { name, phone, password });
+    res.json({ message: 'Profile updated successfully', user: updated });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Failed to update profile' });
+  }
+});
+
 // -------------------------------------------------------------
-// 3. ADMIN USER MANAGEMENT (ADMIN ONLY)
+// 3. ADMIN & PM USER MANAGEMENT
 // -------------------------------------------------------------
 function requireAdmin(req, res, next) {
   const role = (req.user?.role || '').toLowerCase();
   const uname = (req.user?.username || '').toLowerCase();
   if (role !== 'admin' && !uname.includes('admin')) {
     return res.status(403).json({ error: 'Access denied: Administrator privileges required.' });
+  }
+  next();
+}
+
+function requireAdminOrPM(req, res, next) {
+  const role = (req.user?.role || '').toLowerCase();
+  const uname = (req.user?.username || '').toLowerCase();
+  if (role !== 'admin' && role !== 'pm' && !uname.includes('admin')) {
+    return res.status(403).json({ error: 'Access denied: Administrator or Project Manager privileges required.' });
   }
   next();
 }
@@ -114,22 +134,59 @@ app.get(['/api/admin/users', '/api/users'], authMiddleware, async (req, res) => 
   }
 });
 
-// Create User (Both /api/admin/users and /api/users)
-app.post(['/api/admin/users', '/api/users'], authMiddleware, requireAdmin, async (req, res) => {
+// Create User (Admin can create any role; PM can create NOC users)
+app.post(['/api/admin/users', '/api/users'], authMiddleware, requireAdminOrPM, async (req, res) => {
   try {
     const { username, password, name, phone, role } = req.body || {};
+    const callerRole = (req.user?.role || '').toLowerCase();
+    const callerUname = (req.user?.username || '').toLowerCase();
+    const isFullAdmin = callerRole === 'admin' || callerUname.includes('admin');
+
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password are required' });
     }
-    const created = await db.createUser({ username, password, name, phone, role });
+
+    // PM can only create NOC accounts
+    let assignedRole = role || 'noc';
+    if (!isFullAdmin && assignedRole !== 'noc') {
+      assignedRole = 'noc';
+    }
+
+    const created = await db.createUser({
+      username,
+      password,
+      name,
+      phone,
+      role: assignedRole
+    });
     res.status(201).json(created);
   } catch (err) {
     res.status(400).json({ error: err.message || 'Failed to create user' });
   }
 });
 
-// Update User Password (Admin feature)
-app.put(['/api/admin/users/:id/password', '/api/users/:id/password'], authMiddleware, requireAdmin, async (req, res) => {
+// Edit User Details & Role (Admin can edit any user & role; PM can edit NOC users)
+app.put(['/api/admin/users/:id', '/api/users/:id'], authMiddleware, requireAdminOrPM, async (req, res) => {
+  try {
+    const { name, phone, role, username } = req.body || {};
+    const callerRole = (req.user?.role || '').toLowerCase();
+    const callerUname = (req.user?.username || '').toLowerCase();
+    const isFullAdmin = callerRole === 'admin' || callerUname.includes('admin');
+
+    // If caller is PM, they cannot promote to admin or pm, only manage NOC
+    if (!isFullAdmin && role && role !== 'noc') {
+      return res.status(403).json({ error: 'Project Managers can only assign NOC roles.' });
+    }
+
+    const updated = await db.updateUser(req.params.id, { name, phone, role, username });
+    res.json({ message: 'User updated successfully', user: updated });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Failed to update user' });
+  }
+});
+
+// Update User Password (Admin & PM feature)
+app.put(['/api/admin/users/:id/password', '/api/users/:id/password'], authMiddleware, requireAdminOrPM, async (req, res) => {
   try {
     const { password } = req.body || {};
     if (!password) {
@@ -142,7 +199,7 @@ app.put(['/api/admin/users/:id/password', '/api/users/:id/password'], authMiddle
   }
 });
 
-// Delete User
+// Delete User (Admin only)
 app.delete(['/api/admin/users/:id', '/api/users/:id'], authMiddleware, requireAdmin, async (req, res) => {
   try {
     if (req.params.id === req.user.id) {
@@ -200,6 +257,21 @@ app.post('/api/records', authMiddleware, async (req, res) => {
 
 app.put('/api/records/:id', authMiddleware, async (req, res) => {
   try {
+    const existing = await db.getRecordById(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Record not found' });
+
+    const role = (req.user?.role || '').toLowerCase();
+    const uname = (req.user?.username || '').toLowerCase();
+    const isOwner = (existing.claimedBy || '').toLowerCase() === uname;
+    const isUnassigned = !existing.claimedBy;
+    const canEdit = isOwner || isUnassigned || role === 'admin' || role === 'pm';
+
+    if (!canEdit) {
+      return res.status(403).json({
+        error: `This site is owned by ${existing.claimedByName || existing.claimedBy}. Only the assigned NOC, PM, or Admin can edit it. You can click "Request Transfer" to ask for site handover.`
+      });
+    }
+
     const updated = await db.updateRecord(req.params.id, req.body || {}, req.user);
     if (!updated) return res.status(404).json({ error: 'Record not found' });
     res.json(updated);
@@ -208,14 +280,52 @@ app.put('/api/records/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// Claim site endpoint
+// Claim site endpoint (only if unassigned, or user is admin/PM)
 app.put('/api/records/:id/claim', authMiddleware, async (req, res) => {
   try {
+    const existing = await db.getRecordById(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Record not found' });
+
+    const role = (req.user?.role || '').toLowerCase();
+    if (existing.claimedBy && existing.claimedBy !== req.user.username && role !== 'admin' && role !== 'pm') {
+      return res.status(400).json({ error: 'Site is already claimed. Request a transfer instead.' });
+    }
+
     const updated = await db.claimRecord(req.params.id, req.user);
     if (!updated) return res.status(404).json({ error: 'Record not found' });
     res.json({ message: 'Site claimed successfully', record: updated });
   } catch (err) {
     res.status(500).json({ error: 'Failed to claim site', details: err.message });
+  }
+});
+
+// Site Handover: Request transfer from current NOC
+app.post('/api/records/:id/request-transfer', authMiddleware, async (req, res) => {
+  try {
+    const updated = await db.requestTransfer(req.params.id, req.user);
+    res.json({ message: 'Site transfer requested successfully', record: updated });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Failed to request transfer' });
+  }
+});
+
+// Site Handover: Current owner or Admin/PM accepts transfer
+app.post('/api/records/:id/accept-transfer', authMiddleware, async (req, res) => {
+  try {
+    const updated = await db.acceptTransfer(req.params.id, req.user);
+    res.json({ message: 'Site transfer accepted! Ownership updated.', record: updated });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Failed to accept transfer' });
+  }
+});
+
+// Site Handover: Reject or cancel transfer request
+app.post('/api/records/:id/reject-transfer', authMiddleware, async (req, res) => {
+  try {
+    const updated = await db.rejectTransfer(req.params.id, req.user);
+    res.json({ message: 'Site transfer request declined/cancelled', record: updated });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Failed to decline transfer' });
   }
 });
 
@@ -233,7 +343,9 @@ app.get('/api/export', optionalAuth, async (req, res) => {
   try {
     const format = req.query.format || 'json';
     const kind = req.query.kind;
-    const records = await db.getAllRecords({ kind });
+    const working = req.query.working;
+    const claimedBy = req.query.claimedBy || req.query.user;
+    const records = await db.getAllRecords({ kind, working, claimedBy });
 
     if (format === 'csv') {
       const fields = [

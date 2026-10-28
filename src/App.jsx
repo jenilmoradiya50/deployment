@@ -6,6 +6,7 @@ import RecordCard from './components/RecordCard';
 import RecordFormModal from './components/RecordFormModal';
 import ImportExportModal from './components/ImportExportModal';
 import UserManagementModal from './components/UserManagementModal';
+import ProfileModal from './components/ProfileModal';
 import LoginModal from './components/LoginModal';
 import Toast from './components/Toast';
 import { api } from './services/api';
@@ -15,7 +16,8 @@ export default function App() {
   const [dbStatus, setDbStatus] = useState(null);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
 
-  const [kind, setKind] = useState('Branch');
+  // Default to 'All' to mix Branch and ATM on home dashboard by default
+  const [kind, setKind] = useState('All');
   const [records, setRecords] = useState([]);
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -28,6 +30,7 @@ export default function App() {
   const [recordToEdit, setRecordToEdit] = useState(null);
   const [isImportExportOpen, setIsImportExportOpen] = useState(false);
   const [isUserMgmtOpen, setIsUserMgmtOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [recordToDelete, setRecordToDelete] = useState(null);
 
   // Toast state
@@ -56,20 +59,25 @@ export default function App() {
     verifySession();
   }, []);
 
+  // Roles determination
+  const userRole = (currentUser?.role || 'noc').toLowerCase();
+  const isAdmin = userRole === 'admin' || (currentUser?.username || '').toLowerCase().includes('admin');
+  const isPM = userRole === 'pm';
+  const canManageUsers = isAdmin || isPM;
+
   // Fetch users list (for assignment dropdown & user management)
   const loadUsers = useCallback(async () => {
     if (!currentUser) return;
     try {
       const uRole = (currentUser.role || '').toLowerCase();
       const uName = (currentUser.username || '').toLowerCase();
-      if (uRole === 'admin' || uName.includes('admin')) {
+      if (uRole === 'admin' || uRole === 'pm' || uName.includes('admin')) {
         const uList = await api.getUsers();
         setUsers(uList || []);
       } else {
         setUsers([{ id: currentUser.id, username: currentUser.username, name: currentUser.name }]);
       }
     } catch {
-      // Non-admins might not have full list, fallback
       setUsers([{ id: currentUser.id, username: currentUser.username, name: currentUser.name }]);
     }
   }, [currentUser]);
@@ -118,10 +126,15 @@ export default function App() {
     showToast('Signed out successfully.');
   };
 
-  // Filtered counts
+  // Counts
   const branchRecords = useMemo(() => records.filter(r => r.kind === 'Branch'), [records]);
   const atmRecords = useMemo(() => records.filter(r => r.kind === 'ATM'), [records]);
-  const currentKindRecords = useMemo(() => (kind === 'Branch' ? branchRecords : atmRecords), [kind, branchRecords, atmRecords]);
+  const currentKindRecords = useMemo(() => {
+    if (kind === 'Branch') return branchRecords;
+    if (kind === 'ATM') return atmRecords;
+    return records; // 'All' sites mixed
+  }, [kind, branchRecords, atmRecords, records]);
+
   const doneCount = useMemo(() => currentKindRecords.filter(r => r.working === 'Yes').length, [currentKindRecords]);
 
   // Filtered displayed records
@@ -138,9 +151,11 @@ export default function App() {
       // Ownership Filter
       if (ownershipFilter === 'mine') {
         if (!r.claimedBy || r.claimedBy.toLowerCase() !== curUname) return false;
-      }
-      if (ownershipFilter === 'unassigned') {
+      } else if (ownershipFilter === 'unassigned') {
         if (r.claimedBy && r.claimedBy.trim() !== '') return false;
+      } else if (ownershipFilter.startsWith('user:')) {
+        const targetUname = ownershipFilter.replace('user:', '').toLowerCase();
+        if ((r.claimedBy || '').toLowerCase() !== targetUname) return false;
       }
 
       // Search Query
@@ -164,6 +179,37 @@ export default function App() {
     }
   };
 
+  // Handover / Transfer Handlers
+  const handleRequestTransfer = async (recordId) => {
+    try {
+      const res = await api.requestTransfer(recordId);
+      setRecords(prev => prev.map(r => r.id === recordId ? res.record : r));
+      showToast('Handover requested from current site owner!');
+    } catch (err) {
+      showToast(err.message || 'Failed to request transfer', 'error');
+    }
+  };
+
+  const handleAcceptTransfer = async (recordId) => {
+    try {
+      const res = await api.acceptTransfer(recordId);
+      setRecords(prev => prev.map(r => r.id === recordId ? res.record : r));
+      showToast(`Site transfer accepted! Ownership assigned to ${res.record.claimedByName || res.record.claimedBy}.`);
+    } catch (err) {
+      showToast(err.message || 'Failed to accept transfer', 'error');
+    }
+  };
+
+  const handleRejectTransfer = async (recordId) => {
+    try {
+      const res = await api.rejectTransfer(recordId);
+      setRecords(prev => prev.map(r => r.id === recordId ? res.record : r));
+      showToast('Site transfer request declined.');
+    } catch (err) {
+      showToast(err.message || 'Failed to decline transfer', 'error');
+    }
+  };
+
   // Record CRUD Handlers
   const handleSaveRecord = async (formData) => {
     try {
@@ -174,7 +220,7 @@ export default function App() {
       } else {
         const created = await api.createRecord(formData);
         setRecords(prev => [created, ...prev]);
-        showToast(`Created new ${kind} record in database!`);
+        showToast(`Created new ${created.kind || 'site'} record in database!`);
       }
       setIsFormOpen(false);
       setRecordToEdit(null);
@@ -203,19 +249,14 @@ export default function App() {
     showToast(`Exported ${filename}`);
   };
 
-  const handleExportCurrent = () => {
-    const filename = `${kind.toLowerCase()}-sites-export-${new Date().toISOString().slice(0, 10)}.json`;
-    api.downloadFile(JSON.stringify(currentKindRecords, null, 2), filename, 'application/json');
-    showToast(`Exported ${currentKindRecords.length} ${kind} sites`);
-  };
-
   const handleExportAll = () => {
     const filename = `canara-sdwan-database-backup-${new Date().toISOString().slice(0, 10)}.json`;
     api.downloadFile(JSON.stringify(records, null, 2), filename, 'application/json');
     showToast(`Exported complete database (${records.length} records)`);
   };
 
-  const handleExportCSV = () => {
+  const handleExportFilteredCSV = (filteredList, filters = {}) => {
+    const listToExport = filteredList || records;
     const fields = [
       'id', 'kind', 'dpCode', 'atmId', 'feName', 'feNumber',
       'newDeviceSerial', 'oldDeviceModel', 'oldDeviceSerial',
@@ -230,7 +271,7 @@ export default function App() {
     ];
 
     const csvHeader = fields.join(',');
-    const csvRows = records.map(r => {
+    const csvRows = listToExport.map(r => {
       return fields.map(f => {
         const val = r[f] !== undefined && r[f] !== null ? String(r[f]) : '';
         return `"${val.replace(/"/g, '""')}"`;
@@ -238,22 +279,23 @@ export default function App() {
     });
 
     const csvContent = [csvHeader, ...csvRows].join('\r\n');
-    const filename = `canara-sdwan-work-tracker-${new Date().toISOString().slice(0, 10)}.csv`;
+    const filename = `canara-sdwan-report-${new Date().toISOString().slice(0, 10)}.csv`;
     api.downloadFile(csvContent, filename, 'text/csv;charset=utf-8;');
-    showToast('Exported CSV spreadsheet for Excel');
+    showToast(`Exported ${listToExport.length} site deployments to Excel CSV`);
   };
 
-  // Auth checking screen
+  // Loading Screen
   if (isAuthChecking) {
     return (
-      <div className="auth-loading-screen">
-        <div className="auth-spinner"></div>
-        <p>Connecting to Canara SD-WAN Portal...</p>
+      <div className="app-init-loader">
+        <div className="init-spinner"></div>
+        <h2>Canara Bank SD-WAN Tracker</h2>
+        <p>Connecting to Cloud Infrastructure & Secure Session...</p>
       </div>
     );
   }
 
-  // Not logged in -> Show Login Portal (with zero demo text)
+  // Not logged in -> Show Login Portal
   if (!currentUser) {
     return (
       <>
@@ -263,9 +305,6 @@ export default function App() {
     );
   }
 
-  const isAdmin = (currentUser?.role || '').toLowerCase() === 'admin' || 
-                  (currentUser?.username || '').toLowerCase().includes('admin');
-
   return (
     <div className="dashboard-root">
       <Header
@@ -273,18 +312,20 @@ export default function App() {
         dbStatus={dbStatus}
         onOpenImportExport={() => setIsImportExportOpen(true)}
         onOpenUserManagement={() => setIsUserMgmtOpen(true)}
+        onOpenProfile={() => setIsProfileOpen(true)}
         onQuickBackup={handleExportAll}
         onLogout={handleLogout}
       />
 
       <main className="content-wrap">
-        {isAdmin && (
+        {/* Admin & PM Status Strip */}
+        {canManageUsers && (
           <div className="admin-quick-strip">
             <div className="admin-strip-info">
               <span className="admin-badge-icon">🛡️</span>
               <div>
-                <strong>Administrator Console:</strong>
-                <span> Logged in as <em>{currentUser?.name || currentUser?.username}</em>. You can register NOC Engineers, set their login passwords, and manage bank site assignments.</span>
+                <strong>{isAdmin ? 'Administrator Console:' : 'Project Manager Console:'}</strong>
+                <span> Logged in as <em>{currentUser?.name || currentUser?.username}</em> ({userRole.toUpperCase()}). You have permission to manage team accounts, view all site deployments, and generate filtered audit exports.</span>
               </div>
             </div>
             <div className="admin-strip-actions">
@@ -293,7 +334,7 @@ export default function App() {
                 className="admin-strip-action-btn"
                 onClick={() => setIsUserMgmtOpen(true)}
               >
-                👥 Add NOC / Manage Team
+                👥 Team & Users
               </button>
             </div>
           </div>
@@ -305,6 +346,7 @@ export default function App() {
             setKind(newKind);
             setSearch('');
           }}
+          totalCount={records.length}
           branchCount={branchRecords.length}
           atmCount={atmRecords.length}
           search={search}
@@ -313,11 +355,12 @@ export default function App() {
           onStatusFilterChange={setStatusFilter}
           ownershipFilter={ownershipFilter}
           onOwnershipFilterChange={setOwnershipFilter}
+          users={users}
           onAddNew={() => {
             setRecordToEdit(null);
             setIsFormOpen(true);
           }}
-          isAdmin={isAdmin}
+          canManageUsers={canManageUsers}
           onOpenUserManagement={() => setIsUserMgmtOpen(true)}
         />
 
@@ -343,6 +386,9 @@ export default function App() {
                   record={record}
                   currentUser={currentUser}
                   onClaim={handleClaimSite}
+                  onRequestTransfer={handleRequestTransfer}
+                  onAcceptTransfer={handleAcceptTransfer}
+                  onRejectTransfer={handleRejectTransfer}
                   onEdit={(rec) => {
                     setRecordToEdit(rec);
                     setIsFormOpen(true);
@@ -356,11 +402,11 @@ export default function App() {
           ) : (
             <div className="feed-empty-state">
               <div className="empty-badge-icon">📡</div>
-              <h3>No {kind.toLowerCase()} sites found</h3>
+              <h3>No site deployments found</h3>
               <p>
                 {search || statusFilter !== 'all' || ownershipFilter !== 'all'
                   ? 'No sites match your active search or filters.'
-                  : `Get started by registering your first ${kind.toLowerCase()} site deployment.`}
+                  : `Get started by registering your first site deployment.`}
               </p>
               {search || statusFilter !== 'all' || ownershipFilter !== 'all' ? (
                 <button
@@ -383,7 +429,7 @@ export default function App() {
                     setIsFormOpen(true);
                   }}
                 >
-                  ＋ Add First {kind} Record
+                  ＋ Add First Deployment
                 </button>
               )}
             </div>
@@ -393,12 +439,12 @@ export default function App() {
         <footer className="portal-footer">
           <p>
             Connected to <strong>Canara Bank SD-WAN Database (PostgreSQL Engine)</strong>.
-            Signed in as <strong>{currentUser.name || currentUser.username}</strong> ({currentUser.role}).
+            Signed in as <strong>{currentUser.name || currentUser.username}</strong> ({userRole.toUpperCase()}).
           </p>
         </footer>
       </main>
 
-      {/* Add / Edit Form Modal */}
+      {/* Add / Edit Form Modal (Full-Screen Layout) */}
       {isFormOpen && (
         <RecordFormModal
           kind={kind}
@@ -413,13 +459,27 @@ export default function App() {
         />
       )}
 
-      {/* Admin User Management Modal */}
+      {/* Team / User Management Modal */}
       {isUserMgmtOpen && (
         <UserManagementModal
           isOpen={isUserMgmtOpen}
           onClose={() => {
             setIsUserMgmtOpen(false);
             loadUsers();
+          }}
+          currentUser={currentUser}
+          onNotify={showToast}
+        />
+      )}
+
+      {/* My Profile Modal */}
+      {isProfileOpen && (
+        <ProfileModal
+          isOpen={isProfileOpen}
+          onClose={() => setIsProfileOpen(false)}
+          currentUser={currentUser}
+          onProfileUpdated={(updated) => {
+            setCurrentUser(updated);
           }}
           onNotify={showToast}
         />
@@ -430,10 +490,10 @@ export default function App() {
         isOpen={isImportExportOpen}
         onClose={() => setIsImportExportOpen(false)}
         records={records}
+        users={users}
         currentKind={kind}
-        onExportCurrent={handleExportCurrent}
-        onExportAll={handleExportAll}
-        onExportCSV={handleExportCSV}
+        onExportFilteredCSV={handleExportFilteredCSV}
+        onExportAllJSON={handleExportAll}
       />
 
       {/* Delete Confirmation Modal */}
@@ -450,19 +510,22 @@ export default function App() {
                 ✕
               </button>
             </div>
-            <div className="delete-dialog-body">
+            <div className="modal-form-scrollable">
               <p>
-                Are you sure you want to permanently delete site{' '}
-                <strong>{recordToDelete.dpCode || recordToDelete.atmId || recordToDelete.id}</strong>?
+                Are you sure you want to permanently delete{' '}
+                <strong>
+                  {recordToDelete.kind} record: {recordToDelete.dpCode || recordToDelete.atmId || 'site'}
+                </strong>
+                ?
               </p>
               <p className="delete-warning">
-                This record will be permanently deleted from the database.
+                This action cannot be undone. All circuit, VLAN, and hardware details will be erased from PostgreSQL.
               </p>
             </div>
-            <div className="delete-dialog-actions">
+            <div className="modal-form-footer">
               <button
                 type="button"
-                className="delete-confirm-btn"
+                className="danger-btn"
                 onClick={handleConfirmDelete}
               >
                 Confirm Delete
@@ -479,7 +542,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Toast Alert */}
+      {/* Toast Notification Container */}
       <Toast toast={toast} onClose={() => setToast(null)} />
     </div>
   );

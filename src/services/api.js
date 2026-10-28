@@ -142,6 +142,36 @@ export const api = {
     return await res.json();
   },
 
+  async updateUser(id, payload) {
+    const res = await fetch(`${API_BASE}/admin/users/${id}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update user');
+    }
+    return await res.json();
+  },
+
+  async updateProfile(payload) {
+    const res = await fetch(`${API_BASE}/auth/profile`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update profile');
+    }
+    const data = await res.json();
+    if (data.user) {
+      setStoredUser(data.user);
+    }
+    return data;
+  },
+
   // Records: Query
   async getRecords(params = {}) {
     const query = new URLSearchParams();
@@ -226,6 +256,45 @@ export const api = {
       throw new Error(errJson.error || `Failed to claim site`);
     }
 
+    return await res.json();
+  },
+
+  // Records: Request Site Handover / Transfer
+  async requestTransfer(id) {
+    const res = await fetch(`${API_BASE}/records/${id}/request-transfer`, {
+      method: 'POST',
+      headers: authHeaders()
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.error || 'Failed to request transfer');
+    }
+    return await res.json();
+  },
+
+  // Records: Accept Site Handover / Transfer
+  async acceptTransfer(id) {
+    const res = await fetch(`${API_BASE}/records/${id}/accept-transfer`, {
+      method: 'POST',
+      headers: authHeaders()
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.error || 'Failed to accept transfer');
+    }
+    return await res.json();
+  },
+
+  // Records: Reject / Cancel Site Handover
+  async rejectTransfer(id) {
+    const res = await fetch(`${API_BASE}/records/${id}/reject-transfer`, {
+      method: 'POST',
+      headers: authHeaders()
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.error || 'Failed to decline transfer');
+    }
     return await res.json();
   },
 

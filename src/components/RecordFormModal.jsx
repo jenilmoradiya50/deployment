@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 
-export default function RecordFormModal({ kind, recordToEdit, currentUser, users = [], onSave, onClose }) {
-  const isBranch = kind === 'Branch';
-  const isEditing = Boolean(recordToEdit && recordToEdit.id);
-
+export default function RecordFormModal({ kind = 'Branch', recordToEdit, currentUser, users = [], onSave, onClose }) {
   const [formData, setFormData] = useState({});
   const [secondaryIps, setSecondaryIps] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const isEditing = Boolean(recordToEdit && recordToEdit.id);
+  const currentKind = formData.kind || (recordToEdit ? recordToEdit.kind : (kind === 'All' ? 'Branch' : kind));
+  const isBranch = currentKind === 'Branch';
 
   useEffect(() => {
     if (recordToEdit) {
@@ -15,7 +16,7 @@ export default function RecordFormModal({ kind, recordToEdit, currentUser, users
       setSecondaryIps(Array.isArray(recordToEdit.secondaryLanIps) ? [...recordToEdit.secondaryLanIps] : []);
     } else {
       setFormData({
-        kind,
+        kind: kind === 'All' ? 'Branch' : kind,
         claimedBy: currentUser?.username || 'Admin@Canara',
         claimedByName: currentUser?.name || currentUser?.username || 'Admin',
         vlanConfigured: 'No',
@@ -79,7 +80,7 @@ export default function RecordFormModal({ kind, recordToEdit, currentUser, users
     try {
       await onSave({
         ...formData,
-        kind,
+        kind: currentKind,
         secondaryLanIps: secondaryIps.filter(s => s.ip && s.ip.trim() !== '')
       });
     } catch (err) {
@@ -118,13 +119,13 @@ export default function RecordFormModal({ kind, recordToEdit, currentUser, users
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-window" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay modal-overlay-fullscreen">
+      <div className="modal-window record-form-fullscreen" onClick={(e) => e.stopPropagation()}>
         <form onSubmit={handleSubmit} className="modal-form">
           <div className="modal-form-header">
             <div className="header-badge-title">
-              <span className="modal-tag">{kind.toUpperCase()}</span>
-              <h2>{isEditing ? `Edit ${kind} Record` : `Add New ${kind} Record`}</h2>
+              <span className="modal-tag">{currentKind.toUpperCase()} DEPLOYMENT</span>
+              <h2>{isEditing ? `Edit ${currentKind} Deployment` : `Register New ${currentKind} Deployment`}</h2>
             </div>
             <button
               type="button"
@@ -132,7 +133,7 @@ export default function RecordFormModal({ kind, recordToEdit, currentUser, users
               onClick={onClose}
               aria-label="Close dialog"
             >
-              ✕
+              ✕ Close
             </button>
           </div>
 
@@ -143,6 +144,29 @@ export default function RecordFormModal({ kind, recordToEdit, currentUser, users
           )}
 
           <div className="modal-form-scrollable">
+            {/* Deployment Type Selector (Branch vs ATM) */}
+            {!isEditing && (
+              <div className="site-kind-selector-bar">
+                <span className="kind-selector-title">Select Site Type:</span>
+                <div className="kind-toggle-pills">
+                  <button
+                    type="button"
+                    className={`kind-pill-btn ${isBranch ? 'active' : ''}`}
+                    onClick={() => handleChange('kind', 'Branch')}
+                  >
+                    🏢 Branch Router
+                  </button>
+                  <button
+                    type="button"
+                    className={`kind-pill-btn ${!isBranch ? 'active' : ''}`}
+                    onClick={() => handleChange('kind', 'ATM')}
+                  >
+                    🏧 ATM Terminal
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* 1. SITE IDENTIFICATION & OWNERSHIP */}
             <div className="form-section-card">
               <div className="form-section-header">
@@ -634,7 +658,7 @@ export default function RecordFormModal({ kind, recordToEdit, currentUser, users
                 ? 'Saving to Database...'
                 : isEditing
                 ? 'Save Changes'
-                : `Create ${kind} Record`}
+                : `Create ${currentKind} Record`}
             </button>
             <button
               type="button"

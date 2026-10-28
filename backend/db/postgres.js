@@ -12,6 +12,7 @@ const DEFAULT_ADMIN_PASS = process.env.ADMIN_PASSWORD || 'Qwerty@123';
 
 let pool = null;
 let isInitialized = false;
+let initPromise = null;
 
 // In-memory fallback if DATABASE_URL is not set yet (100% in-memory, ZERO files on disk)
 let memUsers = [
@@ -89,11 +90,27 @@ let memRecords = [
   }
 ];
 
+function sanitizeConnectionString(raw) {
+  if (!raw) return raw;
+  const str = raw.trim();
+  // If connection string contains unencoded '@' in password, encode it
+  const match = str.match(/^(postgres(?:ql)?:\/\/[^:]+:)(.*)@([^@\/]+)(:\d+)?(\/.*)?$/);
+  if (match) {
+    const [, prefix, rawPass, host, port = '', rest = ''] = match;
+    if (rawPass.includes('@') && !rawPass.includes('%40')) {
+      return `${prefix}${encodeURIComponent(rawPass)}@${host}${port}${rest}`;
+    }
+  }
+  return str;
+}
+
 function getPool() {
-  const connString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
-  if (!connString) {
+  const rawConnString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  if (!rawConnString) {
     return null;
   }
+
+  const connString = sanitizeConnectionString(rawConnString);
 
   if (!pool) {
     pool = new Pool({
@@ -161,6 +178,9 @@ function formatRecordRow(row) {
     uatFormNo: row.uat_form_no || '',
     claimedBy: row.claimed_by || '',
     claimedByName: row.claimed_by_name || '',
+    transferRequestedBy: row.transfer_requested_by || '',
+    transferRequestedByName: row.transfer_requested_by_name || '',
+    transferRequestedAt: row.transfer_requested_at || null,
     notes: row.notes || '',
     createdBy: row.created_by || '',
     updatedBy: row.updated_by || '',
@@ -170,119 +190,137 @@ function formatRecordRow(row) {
 }
 
 async function initDatabase() {
-  if (isInitialized) return;
   const p = getPool();
   if (!p) {
     isInitialized = true;
     return;
   }
+  if (isInitialized) return;
 
-  try {
-    const client = await p.connect();
+  if (initPromise) return initPromise;
+
+  initPromise = (async () => {
     try {
-      // 1. Create users table
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS users (
-          id VARCHAR(64) PRIMARY KEY,
-          username VARCHAR(100) UNIQUE NOT NULL,
-          password_hash VARCHAR(255) NOT NULL,
-          name VARCHAR(150) NOT NULL,
-          phone VARCHAR(50) DEFAULT '',
-          role VARCHAR(50) NOT NULL DEFAULT 'noc',
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        );
-      `);
-
-      // 2. Create records table
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS records (
-          id VARCHAR(64) PRIMARY KEY,
-          kind VARCHAR(20) NOT NULL DEFAULT 'Branch',
-          dp_code VARCHAR(100) DEFAULT '',
-          atm_id VARCHAR(100) DEFAULT '',
-          fe_name VARCHAR(150) DEFAULT '',
-          fe_number VARCHAR(50) DEFAULT '',
-          new_device_serial VARCHAR(100) DEFAULT '',
-          old_device_model VARCHAR(100) DEFAULT '',
-          old_device_serial VARCHAR(100) DEFAULT '',
-          vlan_configured VARCHAR(10) DEFAULT 'No',
-          vlan_details VARCHAR(100) DEFAULT '',
-          vlan_removed VARCHAR(30) DEFAULT 'Not Removed',
-          primary_lan_ip VARCHAR(50) DEFAULT '',
-          lan_ip_prefix VARCHAR(30) DEFAULT '',
-          primary_lan_gateway VARCHAR(50) DEFAULT '',
-          secondary_lan_ips JSONB DEFAULT '[]'::jsonb,
-          atm_ip VARCHAR(50) DEFAULT '',
-          atm_gateway VARCHAR(50) DEFAULT '',
-          bsnl_ip VARCHAR(50) DEFAULT '',
-          bsnl_gateway VARCHAR(50) DEFAULT '',
-          bsnl_ping VARCHAR(10) DEFAULT 'No',
-          jio_ip VARCHAR(50) DEFAULT '',
-          jio_gateway VARCHAR(50) DEFAULT '',
-          jio_ping VARCHAR(10) DEFAULT 'No',
-          airtel_ip VARCHAR(50) DEFAULT '',
-          airtel_gateway VARCHAR(50) DEFAULT '',
-          ce_ip VARCHAR(50) DEFAULT '',
-          airtel_ping VARCHAR(10) DEFAULT 'No',
-          configuration VARCHAR(50) DEFAULT 'Not completed',
-          mp_added VARCHAR(10) DEFAULT 'No',
-          device_online VARCHAR(10) DEFAULT 'No',
-          mail_sent VARCHAR(10) DEFAULT 'No',
-          dc_mail VARCHAR(30) DEFAULT 'Not received',
-          drc_mail VARCHAR(30) DEFAULT 'Not received',
-          cables_connected VARCHAR(30) DEFAULT 'Not connected',
-          working VARCHAR(10) DEFAULT 'No',
-          uat_submitted VARCHAR(10) DEFAULT 'No',
-          uat_form_no VARCHAR(100) DEFAULT '',
-          claimed_by VARCHAR(100) DEFAULT '',
-          claimed_by_name VARCHAR(150) DEFAULT '',
-          notes TEXT DEFAULT '',
-          created_by VARCHAR(100) DEFAULT 'Admin@Canara',
-          updated_by VARCHAR(100) DEFAULT 'Admin@Canara',
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        );
-      `);
-
-      // 3. Ensure Default Admin exists & password hash is valid
-      const userCheck = await client.query('SELECT id, password_hash FROM users WHERE LOWER(username) = LOWER($1)', ['admin@canara']);
-      const correctHash = await bcrypt.hash('Qwerty@123', 10);
-      if (userCheck.rows.length === 0) {
+      const client = await p.connect();
+      try {
+        // 1. Create users table
         await client.query(`
-          INSERT INTO users (id, username, password_hash, name, phone, role)
-          VALUES ($1, $2, $3, $4, $5, $6), ($7, $8, $9, $10, $11, $12)
-        `, [
-          generateId('usr'),
-          'Admin@Canara',
-          correctHash,
-          'Canara Bank SD-WAN Admin',
-          '9876543210',
-          'admin',
-          generateId('usr'),
-          'admin',
-          correctHash,
-          'Canara Bank SD-WAN Admin',
-          '9876543210',
-          'admin'
-        ]);
-        console.log(`✅ [PostgreSQL] Initialized Default Admin: Admin@Canara`);
-      } else {
-        const matches = await bcrypt.compare('Qwerty@123', userCheck.rows[0].password_hash).catch(() => false);
-        if (!matches) {
-          await client.query('UPDATE users SET password_hash = $1 WHERE LOWER(username) = LOWER($2)', [correctHash, 'admin@canara']);
-          console.log('🔄 [PostgreSQL] Auto-synced Admin@Canara password hash for Qwerty@123');
-        }
-      }
+          CREATE TABLE IF NOT EXISTS users (
+            id VARCHAR(64) PRIMARY KEY,
+            username VARCHAR(100) UNIQUE NOT NULL,
+            password_hash VARCHAR(255) NOT NULL,
+            name VARCHAR(150) NOT NULL,
+            phone VARCHAR(50) DEFAULT '',
+            role VARCHAR(50) NOT NULL DEFAULT 'noc',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+        `);
 
-      console.log('✅ [PostgreSQL] Database tables verified and ready.');
-      isInitialized = true;
-    } finally {
-      client.release();
+        // 2. Create records table
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS records (
+            id VARCHAR(64) PRIMARY KEY,
+            kind VARCHAR(20) NOT NULL DEFAULT 'Branch',
+            dp_code VARCHAR(100) DEFAULT '',
+            atm_id VARCHAR(100) DEFAULT '',
+            fe_name VARCHAR(150) DEFAULT '',
+            fe_number VARCHAR(50) DEFAULT '',
+            new_device_serial VARCHAR(100) DEFAULT '',
+            old_device_model VARCHAR(100) DEFAULT '',
+            old_device_serial VARCHAR(100) DEFAULT '',
+            vlan_configured VARCHAR(10) DEFAULT 'No',
+            vlan_details VARCHAR(100) DEFAULT '',
+            vlan_removed VARCHAR(30) DEFAULT 'Not Removed',
+            primary_lan_ip VARCHAR(50) DEFAULT '',
+            lan_ip_prefix VARCHAR(30) DEFAULT '',
+            primary_lan_gateway VARCHAR(50) DEFAULT '',
+            secondary_lan_ips JSONB DEFAULT '[]'::jsonb,
+            atm_ip VARCHAR(50) DEFAULT '',
+            atm_gateway VARCHAR(50) DEFAULT '',
+            bsnl_ip VARCHAR(50) DEFAULT '',
+            bsnl_gateway VARCHAR(50) DEFAULT '',
+            bsnl_ping VARCHAR(10) DEFAULT 'No',
+            jio_ip VARCHAR(50) DEFAULT '',
+            jio_gateway VARCHAR(50) DEFAULT '',
+            jio_ping VARCHAR(10) DEFAULT 'No',
+            airtel_ip VARCHAR(50) DEFAULT '',
+            airtel_gateway VARCHAR(50) DEFAULT '',
+            ce_ip VARCHAR(50) DEFAULT '',
+            airtel_ping VARCHAR(10) DEFAULT 'No',
+            configuration VARCHAR(50) DEFAULT 'Not completed',
+            mp_added VARCHAR(10) DEFAULT 'No',
+            device_online VARCHAR(10) DEFAULT 'No',
+            mail_sent VARCHAR(10) DEFAULT 'No',
+            dc_mail VARCHAR(30) DEFAULT 'Not received',
+            drc_mail VARCHAR(30) DEFAULT 'Not received',
+            cables_connected VARCHAR(30) DEFAULT 'Not connected',
+            working VARCHAR(10) DEFAULT 'No',
+            uat_submitted VARCHAR(10) DEFAULT 'No',
+            uat_form_no VARCHAR(100) DEFAULT '',
+            claimed_by VARCHAR(100) DEFAULT '',
+            claimed_by_name VARCHAR(150) DEFAULT '',
+            transfer_requested_by VARCHAR(100) DEFAULT '',
+            transfer_requested_by_name VARCHAR(150) DEFAULT '',
+            transfer_requested_at TIMESTAMP WITH TIME ZONE,
+            notes TEXT DEFAULT '',
+            created_by VARCHAR(100) DEFAULT 'Admin@Canara',
+            updated_by VARCHAR(100) DEFAULT 'Admin@Canara',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+        `);
+
+        // Migration safety: ensure transfer columns exist on existing databases
+        await client.query(`
+          ALTER TABLE records ADD COLUMN IF NOT EXISTS transfer_requested_by VARCHAR(100) DEFAULT '';
+          ALTER TABLE records ADD COLUMN IF NOT EXISTS transfer_requested_by_name VARCHAR(150) DEFAULT '';
+          ALTER TABLE records ADD COLUMN IF NOT EXISTS transfer_requested_at TIMESTAMP WITH TIME ZONE;
+        `).catch(() => {});
+
+        // 3. Ensure Default Admin exists & password hash is valid
+        const userCheck = await client.query('SELECT id, password_hash FROM users WHERE LOWER(username) = LOWER($1)', ['admin@canara']);
+        const correctHash = await bcrypt.hash('Qwerty@123', 10);
+        if (userCheck.rows.length === 0) {
+          await client.query(`
+            INSERT INTO users (id, username, password_hash, name, phone, role)
+            VALUES ($1, $2, $3, $4, $5, $6), ($7, $8, $9, $10, $11, $12)
+          `, [
+            generateId('usr'),
+            'Admin@Canara',
+            correctHash,
+            'Canara Bank SD-WAN Admin',
+            '9876543210',
+            'admin',
+            generateId('usr'),
+            'admin',
+            correctHash,
+            'Canara Bank SD-WAN Admin',
+            '9876543210',
+            'admin'
+          ]);
+          console.log(`✅ [PostgreSQL] Initialized Default Admin: Admin@Canara`);
+        } else {
+          const matches = await bcrypt.compare('Qwerty@123', userCheck.rows[0].password_hash).catch(() => false);
+          if (!matches) {
+            await client.query('UPDATE users SET password_hash = $1 WHERE LOWER(username) = LOWER($2)', [correctHash, 'admin@canara']);
+            console.log('🔄 [PostgreSQL] Auto-synced Admin@Canara password hash for Qwerty@123');
+          }
+        }
+
+        console.log('✅ [PostgreSQL] Database tables verified and ready.');
+        isInitialized = true;
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      console.error('⚠️ [PostgreSQL] Initialization error:', err.message);
+      isInitialized = false;
+      initPromise = null;
     }
-  } catch (err) {
-    console.error('⚠️ [PostgreSQL] Initialization error:', err.message);
-  }
+  })();
+
+  return initPromise;
 }
 
 // Database API Methods
@@ -515,6 +553,79 @@ const db = {
     const u = memUsers.find(x => x.id === id);
     if (!u) throw new Error('User not found');
     u.password_hash = hashedPassword;
+    u.updated_at = new Date().toISOString();
+    return { id: u.id, username: u.username, name: u.name, phone: u.phone, role: u.role };
+  },
+
+  // Admin / PM: Update user details & role
+  async updateUser(id, fields = {}) {
+    await initDatabase();
+    const p = getPool();
+    const allowed = {};
+    if (fields.name !== undefined) allowed.name = fields.name;
+    if (fields.phone !== undefined) allowed.phone = fields.phone;
+    if (fields.role !== undefined) allowed.role = fields.role;
+    if (fields.username !== undefined) allowed.username = fields.username;
+
+    if (p && isInitialized) {
+      try {
+        const res = await p.query(`
+          UPDATE users SET
+            name = COALESCE($2, name),
+            phone = COALESCE($3, phone),
+            role = COALESCE($4, role),
+            username = COALESCE($5, username),
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = $1
+          RETURNING id, username, name, phone, role, created_at, updated_at
+        `, [id, allowed.name, allowed.phone, allowed.role, allowed.username]);
+        if (res.rows.length > 0) return res.rows[0];
+      } catch (err) {
+        console.warn('⚠️ [PostgreSQL] updateUser query error:', err.message);
+      }
+    }
+
+    const u = memUsers.find(x => x.id === id);
+    if (!u) throw new Error('User not found');
+    if (allowed.name !== undefined) u.name = allowed.name;
+    if (allowed.phone !== undefined) u.phone = allowed.phone;
+    if (allowed.role !== undefined) u.role = allowed.role;
+    if (allowed.username !== undefined) u.username = allowed.username;
+    u.updated_at = new Date().toISOString();
+    return { id: u.id, username: u.username, name: u.name, phone: u.phone, role: u.role, created_at: u.created_at, updated_at: u.updated_at };
+  },
+
+  // Self Profile: User updates own name, phone, and optional password
+  async updateProfile(id, { name, phone, password }) {
+    await initDatabase();
+    const p = getPool();
+    let passHash = null;
+    if (password && password.trim().length > 0) {
+      passHash = await bcrypt.hash(password, 10);
+    }
+
+    if (p && isInitialized) {
+      try {
+        const res = await p.query(`
+          UPDATE users SET
+            name = COALESCE($2, name),
+            phone = COALESCE($3, phone),
+            password_hash = COALESCE($4, password_hash),
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = $1
+          RETURNING id, username, name, phone, role
+        `, [id, name, phone, passHash]);
+        if (res.rows.length > 0) return res.rows[0];
+      } catch (err) {
+        console.warn('⚠️ [PostgreSQL] updateProfile query error:', err.message);
+      }
+    }
+
+    const u = memUsers.find(x => x.id === id);
+    if (!u) throw new Error('User not found');
+    if (name !== undefined) u.name = name;
+    if (phone !== undefined) u.phone = phone;
+    if (passHash) u.password_hash = passHash;
     u.updated_at = new Date().toISOString();
     return { id: u.id, username: u.username, name: u.name, phone: u.phone, role: u.role };
   },
@@ -879,6 +990,130 @@ const db = {
       claimedBy: user.username,
       claimedByName: user.name || user.username
     }, user);
+  },
+
+  // Request site transfer (NOC asks current owner for site handover)
+  async requestTransfer(recordId, user = {}) {
+    await initDatabase();
+    const p = getPool();
+    const requester = user.username || '';
+    const requesterName = user.name || requester;
+    if (!requester) throw new Error('Authentication required to request transfer');
+
+    if (p && isInitialized) {
+      try {
+        const res = await p.query(`
+          UPDATE records SET
+            transfer_requested_by = $1,
+            transfer_requested_by_name = $2,
+            transfer_requested_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = $3
+          RETURNING *;
+        `, [requester, requesterName, recordId]);
+        if (res.rows.length === 0) throw new Error('Site record not found');
+        return formatRecordRow(res.rows[0]);
+      } catch (err) {
+        console.warn('⚠️ [PostgreSQL] requestTransfer query error:', err.message);
+      }
+    }
+
+    const rec = memRecords.find(r => r.id === recordId);
+    if (!rec) throw new Error('Site record not found');
+    rec.transfer_requested_by = requester;
+    rec.transfer_requested_by_name = requesterName;
+    rec.transfer_requested_at = new Date().toISOString();
+    return formatRecordRow(rec);
+  },
+
+  // Accept site transfer (current owner or admin/pm approves transfer)
+  async acceptTransfer(recordId, user = {}) {
+    await initDatabase();
+    const p = getPool();
+
+    const record = await this.getRecordById(recordId);
+    if (!record) throw new Error('Site record not found');
+    if (!record.transferRequestedBy) throw new Error('No pending transfer request on this site');
+
+    const userRole = (user.role || '').toLowerCase();
+    const uname = (user.username || '').toLowerCase();
+    const isOwner = (record.claimedBy || '').toLowerCase() === uname;
+    const canAccept = isOwner || userRole === 'admin' || userRole === 'pm';
+    if (!canAccept) {
+      throw new Error('You do not have permission to approve this site transfer');
+    }
+
+    const newOwner = record.transferRequestedBy;
+    const newOwnerName = record.transferRequestedByName || newOwner;
+
+    if (p && isInitialized) {
+      try {
+        const res = await p.query(`
+          UPDATE records SET
+            claimed_by = $1,
+            claimed_by_name = $2,
+            transfer_requested_by = '',
+            transfer_requested_by_name = '',
+            transfer_requested_at = NULL,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = $3
+          RETURNING *;
+        `, [newOwner, newOwnerName, recordId]);
+        if (res.rows.length > 0) return formatRecordRow(res.rows[0]);
+      } catch (err) {
+        console.warn('⚠️ [PostgreSQL] acceptTransfer query error:', err.message);
+      }
+    }
+
+    const rec = memRecords.find(r => r.id === recordId);
+    if (!rec) throw new Error('Site record not found');
+    rec.claimed_by = newOwner;
+    rec.claimed_by_name = newOwnerName;
+    rec.transfer_requested_by = '';
+    rec.transfer_requested_by_name = '';
+    rec.transfer_requested_at = null;
+    return formatRecordRow(rec);
+  },
+
+  // Reject / Cancel site transfer
+  async rejectTransfer(recordId, user = {}) {
+    await initDatabase();
+    const p = getPool();
+
+    const record = await this.getRecordById(recordId);
+    if (!record) throw new Error('Site record not found');
+
+    const userRole = (user.role || '').toLowerCase();
+    const uname = (user.username || '').toLowerCase();
+    const isOwner = (record.claimedBy || '').toLowerCase() === uname;
+    const isRequester = (record.transferRequestedBy || '').toLowerCase() === uname;
+    if (!isOwner && !isRequester && userRole !== 'admin' && userRole !== 'pm') {
+      throw new Error('Not authorized to cancel this transfer request');
+    }
+
+    if (p && isInitialized) {
+      try {
+        const res = await p.query(`
+          UPDATE records SET
+            transfer_requested_by = '',
+            transfer_requested_by_name = '',
+            transfer_requested_at = NULL,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = $1
+          RETURNING *;
+        `, [recordId]);
+        if (res.rows.length > 0) return formatRecordRow(res.rows[0]);
+      } catch (err) {
+        console.warn('⚠️ [PostgreSQL] rejectTransfer query error:', err.message);
+      }
+    }
+
+    const rec = memRecords.find(r => r.id === recordId);
+    if (!rec) throw new Error('Site record not found');
+    rec.transfer_requested_by = '';
+    rec.transfer_requested_by_name = '';
+    rec.transfer_requested_at = null;
+    return formatRecordRow(rec);
   },
 
   // Stats: Aggregated
