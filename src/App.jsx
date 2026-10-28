@@ -5,6 +5,7 @@ import Toolbar from './components/Toolbar';
 import RecordCard from './components/RecordCard';
 import RecordFormModal from './components/RecordFormModal';
 import ImportExportModal from './components/ImportExportModal';
+import UserManagementModal from './components/UserManagementModal';
 import LoginModal from './components/LoginModal';
 import Toast from './components/Toast';
 import { api } from './services/api';
@@ -16,15 +17,17 @@ export default function App() {
 
   const [kind, setKind] = useState('Branch');
   const [records, setRecords] = useState([]);
+  const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [ispFilter, setIspFilter] = useState('all');
+  const [ownershipFilter, setOwnershipFilter] = useState('all');
 
   // Modals state
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [recordToEdit, setRecordToEdit] = useState(null);
   const [isImportExportOpen, setIsImportExportOpen] = useState(false);
+  const [isUserMgmtOpen, setIsUserMgmtOpen] = useState(false);
   const [recordToDelete, setRecordToDelete] = useState(null);
 
   // Toast state
@@ -53,6 +56,22 @@ export default function App() {
     verifySession();
   }, []);
 
+  // Fetch users list (for assignment dropdown & user management)
+  const loadUsers = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      if (currentUser.role === 'admin') {
+        const uList = await api.getUsers();
+        setUsers(uList || []);
+      } else {
+        setUsers([{ id: currentUser.id, username: currentUser.username, name: currentUser.name }]);
+      }
+    } catch {
+      // Non-admins might not have full list, fallback
+      setUsers([{ id: currentUser.id, username: currentUser.username, name: currentUser.name }]);
+    }
+  }, [currentUser]);
+
   // Fetch records
   const loadData = useCallback(async () => {
     if (!currentUser) return;
@@ -62,7 +81,7 @@ export default function App() {
       setRecords(res.data || []);
       const stats = await api.getStats();
       if (stats?.database) {
-        setDbStatus({ type: stats.database.includes('MongoDB') ? 'mongodb' : 'local' });
+        setDbStatus({ type: stats.database.includes('PostgreSQL') ? 'postgresql' : 'memory' });
       }
     } catch (err) {
       if (err.message === 'UNAUTHORIZED') {
@@ -79,8 +98,9 @@ export default function App() {
   useEffect(() => {
     if (currentUser) {
       loadData();
+      loadUsers();
     }
-  }, [currentUser, loadData]);
+  }, [currentUser, loadData, loadUsers]);
 
   // Auth Handlers
   const handleLoginSuccess = async (username, password) => {
@@ -105,6 +125,7 @@ export default function App() {
   // Filtered displayed records
   const displayedRecords = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const curUname = (currentUser?.username || '').toLowerCase();
 
     return currentKindRecords.filter(r => {
       // Status Filter
@@ -112,10 +133,13 @@ export default function App() {
       if (statusFilter === 'notWorking' && r.working !== 'No') return false;
       if (statusFilter === 'pending' && (r.working === 'Yes' || r.working === 'No')) return false;
 
-      // ISP Circuit Filter
-      if (ispFilter === 'bsnlOk' && r.bsnlPing !== 'Yes') return false;
-      if (ispFilter === 'jioOk' && r.jioPing !== 'Yes') return false;
-      if (ispFilter === 'airtelOk' && r.airtelPing !== 'Yes') return false;
+      // Ownership Filter
+      if (ownershipFilter === 'mine') {
+        if (!r.claimedBy || r.claimedBy.toLowerCase() !== curUname) return false;
+      }
+      if (ownershipFilter === 'unassigned') {
+        if (r.claimedBy && r.claimedBy.trim() !== '') return false;
+      }
 
       // Search Query
       if (q) {
@@ -125,7 +149,18 @@ export default function App() {
 
       return true;
     });
-  }, [currentKindRecords, search, statusFilter, ispFilter]);
+  }, [currentKindRecords, search, statusFilter, ownershipFilter, currentUser]);
+
+  // Claim site
+  const handleClaimSite = async (recordId) => {
+    try {
+      const res = await api.claimRecord(recordId);
+      setRecords(prev => prev.map(r => r.id === recordId ? res.record : r));
+      showToast(`Site claimed successfully by you!`);
+    } catch (err) {
+      showToast('Could not claim site: ' + err.message, 'error');
+    }
+  };
 
   // Record CRUD Handlers
   const handleSaveRecord = async (formData) => {
@@ -173,19 +208,23 @@ export default function App() {
   };
 
   const handleExportAll = () => {
-    const filename = `sd-wan-database-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    const filename = `canara-sdwan-database-backup-${new Date().toISOString().slice(0, 10)}.json`;
     api.downloadFile(JSON.stringify(records, null, 2), filename, 'application/json');
     showToast(`Exported complete database (${records.length} records)`);
   };
 
   const handleExportCSV = () => {
     const fields = [
-      'id', 'kind', 'dpCode', 'atmId', 'vlan',
-      'lanIp', 'lanGateway', 'atmIp', 'atmGateway',
+      'id', 'kind', 'dpCode', 'atmId', 'feName', 'feNumber',
+      'newDeviceSerial', 'oldDeviceModel', 'oldDeviceSerial',
+      'vlanConfigured', 'vlanDetails', 'vlanRemoved',
+      'primaryLanIp', 'lanIpPrefix', 'primaryLanGateway',
+      'atmIp', 'atmGateway',
       'bsnlIp', 'bsnlGateway', 'bsnlPing',
       'jioIp', 'jioGateway', 'jioPing',
       'airtelIp', 'airtelGateway', 'ceIp', 'airtelPing',
-      'configuration', 'mp', 'online', 'mail', 'dcMail', 'drcMail', 'cables', 'working',
+      'configuration', 'mpAdded', 'deviceOnline', 'mailSent', 'dcMail', 'drcMail', 'cablesConnected', 'working',
+      'uatSubmitted', 'uatFormNo', 'claimedBy', 'claimedByName',
       'createdBy', 'updatedBy', 'created', 'updated'
     ];
 
@@ -198,21 +237,9 @@ export default function App() {
     });
 
     const csvContent = [csvHeader, ...csvRows].join('\r\n');
-    const filename = `sdwan-work-tracker-${new Date().toISOString().slice(0, 10)}.csv`;
+    const filename = `canara-sdwan-work-tracker-${new Date().toISOString().slice(0, 10)}.csv`;
     api.downloadFile(csvContent, filename, 'text/csv;charset=utf-8;');
     showToast('Exported CSV spreadsheet for Excel');
-  };
-
-  // Import handler
-  const handleImportRecords = async (importedList, mode) => {
-    try {
-      const res = await api.bulkImport(importedList, mode);
-      await loadData();
-      showToast(res.message || `Imported ${importedList.length} records!`);
-    } catch (err) {
-      showToast('Import failed: ' + err.message, 'error');
-      throw err;
-    }
   };
 
   // Auth checking screen
@@ -220,12 +247,12 @@ export default function App() {
     return (
       <div className="auth-loading-screen">
         <div className="auth-spinner"></div>
-        <p>Connecting to SD-WAN Portal...</p>
+        <p>Connecting to Canara SD-WAN Portal...</p>
       </div>
     );
   }
 
-  // Not logged in -> Show Login Portal
+  // Not logged in -> Show Login Portal (with zero demo text)
   if (!currentUser) {
     return (
       <>
@@ -241,6 +268,7 @@ export default function App() {
         currentUser={currentUser}
         dbStatus={dbStatus}
         onOpenImportExport={() => setIsImportExportOpen(true)}
+        onOpenUserManagement={() => setIsUserMgmtOpen(true)}
         onQuickBackup={handleExportAll}
         onLogout={handleLogout}
       />
@@ -258,8 +286,8 @@ export default function App() {
           onSearchChange={setSearch}
           statusFilter={statusFilter}
           onStatusFilterChange={setStatusFilter}
-          ispFilter={ispFilter}
-          onIspFilterChange={setIspFilter}
+          ownershipFilter={ownershipFilter}
+          onOwnershipFilterChange={setOwnershipFilter}
           onAddNew={() => {
             setRecordToEdit(null);
             setIsFormOpen(true);
@@ -278,7 +306,7 @@ export default function App() {
           {isLoading ? (
             <div className="feed-loading-box">
               <div className="feed-spinner"></div>
-              <span>Syncing records from database...</span>
+              <span>Querying cloud PostgreSQL database...</span>
             </div>
           ) : displayedRecords.length > 0 ? (
             <div className="sites-grid">
@@ -286,6 +314,8 @@ export default function App() {
                 <RecordCard
                   key={record.id}
                   record={record}
+                  currentUser={currentUser}
+                  onClaim={handleClaimSite}
                   onEdit={(rec) => {
                     setRecordToEdit(rec);
                     setIsFormOpen(true);
@@ -299,20 +329,20 @@ export default function App() {
           ) : (
             <div className="feed-empty-state">
               <div className="empty-badge-icon">📡</div>
-              <h3>No {kind.toLowerCase()} records found</h3>
+              <h3>No {kind.toLowerCase()} sites found</h3>
               <p>
-                {search || statusFilter !== 'all' || ispFilter !== 'all'
+                {search || statusFilter !== 'all' || ownershipFilter !== 'all'
                   ? 'No sites match your active search or filters.'
                   : `Get started by registering your first ${kind.toLowerCase()} site deployment.`}
               </p>
-              {search || statusFilter !== 'all' || ispFilter !== 'all' ? (
+              {search || statusFilter !== 'all' || ownershipFilter !== 'all' ? (
                 <button
                   type="button"
                   className="reset-filters-btn"
                   onClick={() => {
                     setSearch('');
                     setStatusFilter('all');
-                    setIspFilter('all');
+                    setOwnershipFilter('all');
                   }}
                 >
                   Clear Active Filters
@@ -335,8 +365,8 @@ export default function App() {
 
         <footer className="portal-footer">
           <p>
-            Connected to <strong>Node.js Backend & MongoDB / Local Database</strong>.
-            Authorized access for <strong>{currentUser.name || currentUser.username}</strong> ({currentUser.role}).
+            Connected to <strong>Canara Bank SD-WAN Database (PostgreSQL Engine)</strong>.
+            Signed in as <strong>{currentUser.name || currentUser.username}</strong> ({currentUser.role}).
           </p>
         </footer>
       </main>
@@ -346,6 +376,8 @@ export default function App() {
         <RecordFormModal
           kind={kind}
           recordToEdit={recordToEdit}
+          currentUser={currentUser}
+          users={users}
           onSave={handleSaveRecord}
           onClose={() => {
             setIsFormOpen(false);
@@ -354,13 +386,24 @@ export default function App() {
         />
       )}
 
-      {/* Import / Export Modal */}
+      {/* Admin User Management Modal */}
+      {isUserMgmtOpen && (
+        <UserManagementModal
+          isOpen={isUserMgmtOpen}
+          onClose={() => {
+            setIsUserMgmtOpen(false);
+            loadUsers();
+          }}
+          onNotify={showToast}
+        />
+      )}
+
+      {/* Export / Backup Modal */}
       <ImportExportModal
         isOpen={isImportExportOpen}
         onClose={() => setIsImportExportOpen(false)}
         records={records}
         currentKind={kind}
-        onImport={handleImportRecords}
         onExportCurrent={handleExportCurrent}
         onExportAll={handleExportAll}
         onExportCSV={handleExportCSV}
@@ -382,7 +425,7 @@ export default function App() {
             </div>
             <div className="delete-dialog-body">
               <p>
-                Are you sure you want to permanently delete{' '}
+                Are you sure you want to permanently delete site{' '}
                 <strong>{recordToDelete.dpCode || recordToDelete.atmId || recordToDelete.id}</strong>?
               </p>
               <p className="delete-warning">

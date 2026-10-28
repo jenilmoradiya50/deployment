@@ -183,7 +183,7 @@ input, select, textarea {
   border-radius: var(--radius-sm);
   font-weight: 600;
   font-size: 14.5px;
-  margin-top: 4px;
+  margin-top: 6px;
   transition: background 0.15s ease;
 }
 
@@ -194,28 +194,6 @@ input, select, textarea {
 .login-submit-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-.quick-demo-box {
-  margin-top: 4px;
-  text-align: center;
-}
-
-.quick-fill-btn {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #2563eb;
-  background: #f0fdf4;
-  border: 1px dashed #86efac;
-  border-radius: var(--radius-sm);
-  padding: 7px 12px;
-  width: 100%;
-  transition: all 0.15s ease;
-}
-
-.quick-fill-btn:hover {
-  background: #dcfce7;
-  color: #15803d;
 }
 
 .login-footer {
@@ -326,6 +304,17 @@ input, select, textarea {
 
 .header-btn:hover {
   background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+.header-btn.admin-highlight {
+  background: #1e3a8a;
+  color: #93c5fd;
+  border-color: #3b82f6;
+}
+
+.header-btn.admin-highlight:hover {
+  background: #2563eb;
   color: #ffffff;
 }
 
@@ -605,7 +594,7 @@ input, select, textarea {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
   border-radius: var(--radius-md);
-  padding: 18px 20px;
+  padding: 16px 20px;
   box-shadow: var(--shadow-sm);
   transition: box-shadow 0.15s, border-color 0.15s;
 }
@@ -615,6 +604,71 @@ input, select, textarea {
   box-shadow: var(--shadow-md);
 }
 
+/* Claim / Ownership Strip */
+.site-claim-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f1f5f9;
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  margin-bottom: 12px;
+  font-size: 12.5px;
+}
+
+.claim-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.claim-name-pill {
+  background: #e0e7ff;
+  color: #3730a3;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.claim-name-pill.is-me {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.you-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  background: #2563eb;
+  color: #ffffff;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.claim-unassigned-tag {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.claim-action-btn {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #2563eb;
+  background: #ffffff;
+  border: 1px solid #bfdbfe;
+  padding: 3px 10px;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.claim-action-btn:hover {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+/* Header */
 .site-card-header {
   display: flex;
   justify-content: space-between;
@@ -699,7 +753,7 @@ input, select, textarea {
 .site-sections-container {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .site-section-panel {
@@ -709,11 +763,67 @@ input, select, textarea {
   padding: 10px 14px;
 }
 
+.fe-hardware-panel {
+  background: #fafcff;
+  border-color: #dbeafe;
+}
+
+.fe-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  font-size: 12.5px;
+}
+
+.fe-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.panel-mini-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.fe-tel-link {
+  color: var(--primary-blue);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.uat-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  width: fit-content;
+}
+
+.uat-badge.submitted { background: var(--emerald-bg); color: var(--emerald); }
+.uat-badge.pending { background: #f1f5f9; color: var(--text-muted); }
+
+.uat-no {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.device-sn {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .section-panel-header {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
+  flex-wrap: wrap;
 }
 
 .panel-icon {
@@ -728,12 +838,37 @@ input, select, textarea {
   color: var(--text-secondary);
 }
 
+.vlan-status-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.vlan-id-pill {
+  background: #e2e8f0;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.vlan-removed-pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.vlan-removed-pill.removed { background: var(--rose-bg); color: var(--rose); }
+.vlan-removed-pill.kept { background: #f1f5f9; color: var(--text-muted); }
+
 .badge-pill {
   font-size: 11px;
   font-weight: 600;
   padding: 1px 7px;
   border-radius: 4px;
-  margin-left: auto;
 }
 
 .badge-pill.good { background: var(--emerald-bg); color: var(--emerald); }
@@ -741,7 +876,7 @@ input, select, textarea {
 
 .panel-chips-row {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
@@ -754,6 +889,16 @@ input, select, textarea {
   padding: 3px 8px;
   border-radius: 4px;
   font-size: 12px;
+}
+
+.ip-chip.secondary-lan {
+  background: #fdfefe;
+  border-color: #cbd5e1;
+}
+
+.sec-note {
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .ip-chip-label {
@@ -916,7 +1061,7 @@ input, select, textarea {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(11, 21, 40, 0.7);
+  background: rgba(11, 21, 40, 0.75);
   backdrop-filter: blur(3px);
   display: flex;
   align-items: center;
@@ -1009,7 +1154,7 @@ input, select, textarea {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
 }
 
 .form-section-card {
@@ -1116,6 +1261,80 @@ input, select, textarea {
   accent-color: #ffffff;
 }
 
+/* Secondary LAN IPs Container */
+.secondary-ips-container {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed #cbd5e1;
+}
+
+.sec-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.sec-header-row h5 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.sub-hint {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.add-sec-ip-btn {
+  background: #eff6ff;
+  color: var(--primary-blue);
+  border: 1px solid #bfdbfe;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+
+.add-sec-ip-btn:hover:not(:disabled) {
+  background: var(--primary-blue);
+  color: #ffffff;
+}
+
+.add-sec-ip-btn:disabled {
+  background: #f1f5f9;
+  color: var(--text-muted);
+  border-color: #cbd5e1;
+  cursor: not-allowed;
+}
+
+.secondary-ip-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.sec-box-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.remove-sec-btn {
+  color: var(--rose);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.remove-sec-btn:hover {
+  text-decoration: underline;
+}
+
 .modal-form-footer {
   display: flex;
   align-items: center;
@@ -1158,47 +1377,144 @@ input, select, textarea {
 }
 
 /* ========================================================
-   7. DELETE DIALOG & TOAST
+   7. USER MANAGEMENT MODAL
 ======================================================== */
-.delete-dialog {
-  max-width: 440px;
+.user-mgmt-modal {
+  max-width: 800px;
 }
 
-.delete-dialog-body {
-  padding: 20px 24px;
-  font-size: 14px;
-  color: var(--text-primary);
+.user-mgmt-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
 }
 
-.delete-warning {
-  color: var(--rose);
+.sub-text {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.primary-btn-sm {
+  background: var(--primary-blue);
+  color: #ffffff;
   font-size: 12.5px;
   font-weight: 600;
-  margin-top: 6px;
-}
-
-.delete-dialog-actions {
-  display: flex;
-  gap: 10px;
-  padding: 14px 24px;
-  background: #f8fafc;
-  border-top: 1px solid var(--card-border);
-}
-
-.delete-confirm-btn {
-  background: var(--rose);
-  color: #ffffff;
-  font-size: 13px;
-  font-weight: 600;
-  padding: 8px 16px;
+  padding: 6px 14px;
   border-radius: var(--radius-sm);
 }
 
-.delete-confirm-btn:hover {
-  background: #be123c;
+.add-user-card {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  margin-bottom: 16px;
 }
 
-/* Toast */
+.add-user-card h4 {
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.user-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.user-form-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.users-table-wrap {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+}
+
+.users-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.users-table th {
+  background: #f1f5f9;
+  text-align: left;
+  padding: 10px 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--card-border);
+}
+
+.users-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.role-chip {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.role-chip.admin { background: #dbeafe; color: #1e40af; }
+.role-chip.fe { background: #fef3c7; color: #92400e; }
+
+.danger-text-btn {
+  color: var(--rose);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.danger-text-btn:hover {
+  text-decoration: underline;
+}
+
+/* ========================================================
+   8. EXPORT MODAL & TOAST
+======================================================== */
+.export-options-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.export-option-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #f8fafc;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+}
+
+.export-option-icon {
+  font-size: 24px;
+}
+
+.export-option-text {
+  flex: 1;
+}
+
+.export-option-text strong {
+  display: block;
+  font-size: 13.5px;
+  color: var(--text-primary);
+}
+
+.export-option-text span {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .toast-container {
   position: fixed;
   bottom: 24px;
@@ -1224,9 +1540,6 @@ input, select, textarea {
   font-size: 14px;
 }
 
-.toast-close:hover { color: #ffffff; }
-
-/* Empty state */
 .feed-empty-state {
   text-align: center;
   padding: 48px 16px;
@@ -1262,7 +1575,6 @@ input, select, textarea {
   border-radius: var(--radius-sm);
 }
 
-/* Portal Footer */
 .portal-footer {
   margin-top: 24px;
   text-align: center;

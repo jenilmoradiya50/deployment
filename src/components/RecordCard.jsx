@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 
-export default function RecordCard({ record, onEdit, onDelete, onExport, onNotify }) {
+export default function RecordCard({ record, currentUser, onEdit, onDelete, onClaim, onExport, onNotify }) {
   const [copiedKey, setCopiedKey] = useState(null);
 
   const isBranch = record.kind === 'Branch';
   const title = isBranch ? (record.dpCode || 'Branch Record') : (record.atmId || 'ATM Record');
   const isWorking = record.working === 'Yes';
   const isNotWorking = record.working === 'No';
+
+  const isClaimedByMe = record.claimedBy && currentUser && record.claimedBy.toLowerCase() === currentUser.username.toLowerCase();
+  const hasClaimant = Boolean(record.claimedBy);
 
   const updatedTime = record.updated || record.created;
   const formattedDate = updatedTime
@@ -26,12 +29,14 @@ export default function RecordCard({ record, onEdit, onDelete, onExport, onNotif
     }
   };
 
-  const renderIpItem = (label, val, key) => {
+  const renderIpChip = (label, val, key, prefix = '') => {
     if (!val) return null;
+    const displayVal = prefix ? `${val} ${prefix}` : val;
+
     return (
       <div className="ip-chip">
         <span className="ip-chip-label">{label}:</span>
-        <span className="ip-chip-val">{val}</span>
+        <span className="ip-chip-val">{displayVal}</span>
         <button
           type="button"
           className="ip-copy-trigger"
@@ -56,6 +61,33 @@ export default function RecordCard({ record, onEdit, onDelete, onExport, onNotif
 
   return (
     <article className="site-record-card">
+      {/* Top Claim/Ownership Bar */}
+      <div className="site-claim-strip">
+        <div className="claim-left">
+          <span className="claim-icon">📌</span>
+          <span className="claim-label">Site Assigned To:</span>
+          {hasClaimant ? (
+            <span className={`claim-name-pill ${isClaimedByMe ? 'is-me' : ''}`}>
+              <strong>{record.claimedByName || record.claimedBy}</strong>
+              {isClaimedByMe && <span className="you-tag">(You)</span>}
+            </span>
+          ) : (
+            <span className="claim-unassigned-tag">Unassigned / Open</span>
+          )}
+        </div>
+
+        {!isClaimedByMe && onClaim && (
+          <button
+            type="button"
+            className="claim-action-btn"
+            onClick={() => onClaim(record.id)}
+            title="Link this site to your account"
+          >
+            Take / Claim Site
+          </button>
+        )}
+      </div>
+
       {/* Card Header */}
       <div className="site-card-header">
         <div className="site-title-group">
@@ -79,7 +111,7 @@ export default function RecordCard({ record, onEdit, onDelete, onExport, onNotif
           <div className="site-meta-row">
             {!isBranch && (
               <span className="meta-item">
-                Base Branch: <strong>{record.dpCode || '—'}</strong>
+                Base Branch DP: <strong>{record.dpCode || '—'}</strong>
               </span>
             )}
             {isBranch && (
@@ -101,27 +133,88 @@ export default function RecordCard({ record, onEdit, onDelete, onExport, onNotif
 
       {/* Structured Sections Grid */}
       <div className="site-sections-container">
-        {/* LAN Configuration */}
-        <div className="site-section-panel">
-          <div className="section-panel-header">
-            <span className="panel-icon">🌐</span>
-            <span className="panel-title">LAN & Routing</span>
-            <span className={`badge-pill ${record.vlan === 'Yes' ? 'good' : 'warn'}`}>
-              VLAN: {record.vlan || 'No'}
-            </span>
-          </div>
-          <div className="panel-chips-row">
-            {renderIpItem('LAN IP', record.lanIp, 'lanIp')}
-            {renderIpItem('Gateway', record.lanGateway, 'lanGateway')}
-            {isBranch && renderIpItem('ATM IP', record.atmIp, 'atmIp')}
-            {isBranch && renderIpItem('2nd ATM IP', record.atmGateway, 'atmGateway')}
-            {!record.lanIp && !record.lanGateway && (
-              <span className="empty-sub">LAN IP not configured</span>
-            )}
+        {/* Field Engineer & Hardware Info */}
+        <div className="site-section-panel fe-hardware-panel">
+          <div className="fe-row">
+            <div className="fe-col">
+              <span className="panel-mini-label">Field Engineer:</span>
+              <strong>{record.feName || 'Not Assigned'}</strong>
+              {record.feNumber && (
+                <a href={`tel:${record.feNumber}`} className="fe-tel-link">
+                  📞 {record.feNumber}
+                </a>
+              )}
+            </div>
+
+            <div className="fe-col">
+              <span className="panel-mini-label">UAT Form:</span>
+              <span className={`uat-badge ${record.uatSubmitted === 'Yes' ? 'submitted' : 'pending'}`}>
+                {record.uatSubmitted === 'Yes' ? '✓ Handed Over' : 'Pending / Not Given'}
+              </span>
+              {record.uatFormNo && <span className="uat-no">Ref: {record.uatFormNo}</span>}
+            </div>
+
+            <div className="fe-col">
+              <span className="panel-mini-label">New Device S/N:</span>
+              <span className="device-sn">{record.newDeviceSerial || '—'}</span>
+            </div>
+
+            <div className="fe-col">
+              <span className="panel-mini-label">Old Device:</span>
+              <span>{record.oldDeviceModel || '—'} {record.oldDeviceSerial ? `(S/N: ${record.oldDeviceSerial})` : ''}</span>
+            </div>
           </div>
         </div>
 
-        {/* ISP Circuits */}
+        {/* LAN Configuration with Primary & up to 3 Secondary IPs */}
+        <div className="site-section-panel">
+          <div className="section-panel-header">
+            <span className="panel-icon">🌐</span>
+            <span className="panel-title">LAN Configuration & VLAN</span>
+            <div className="vlan-status-group">
+              <span className={`badge-pill ${record.vlanConfigured === 'Yes' ? 'good' : 'warn'}`}>
+                VLAN: {record.vlanConfigured || 'No'}
+              </span>
+              {record.vlanConfigured === 'Yes' && record.vlanDetails && (
+                <span className="vlan-id-pill">{record.vlanDetails}</span>
+              )}
+              {record.vlanConfigured === 'Yes' && (
+                <span className={`vlan-removed-pill ${record.vlanRemoved === 'Removed' ? 'removed' : 'kept'}`}>
+                  {record.vlanRemoved || 'Not Removed'}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="panel-chips-row">
+            {renderIpChip('Primary LAN IP', record.primaryLanIp, 'primaryLanIp', record.lanIpPrefix)}
+            {renderIpChip('Gateway', record.primaryLanGateway, 'primaryLanGateway')}
+
+            {/* Secondary LAN IPs (Limit of 3) */}
+            {Array.isArray(record.secondaryLanIps) && record.secondaryLanIps.map((sec, idx) => (
+              sec.ip ? (
+                <div key={idx} className="ip-chip secondary-lan">
+                  <span className="ip-chip-label">Secondary #{idx + 1}:</span>
+                  <span className="ip-chip-val">{sec.ip} {sec.prefix || ''}</span>
+                  {sec.note && <span className="sec-note">({sec.note})</span>}
+                  <button
+                    type="button"
+                    className="ip-copy-trigger"
+                    onClick={() => handleCopy(sec.ip, `sec_${idx}`)}
+                    title={`Copy ${sec.ip}`}
+                  >
+                    {copiedKey === `sec_${idx}` ? '✓' : '⧉'}
+                  </button>
+                </div>
+              ) : null
+            ))}
+
+            {isBranch && renderIpChip('ATM IP', record.atmIp, 'atmIp')}
+            {isBranch && renderIpChip('2nd ATM IP', record.atmGateway, 'atmGateway')}
+          </div>
+        </div>
+
+        {/* ISP Circuits with Ping Badges */}
         <div className="site-section-panel">
           <div className="section-panel-header">
             <span className="panel-icon">⚡</span>
@@ -131,12 +224,12 @@ export default function RecordCard({ record, onEdit, onDelete, onExport, onNotif
             {/* BSNL */}
             <div className="circuit-box">
               <div className="circuit-head">
-                <strong>BSNL</strong>
+                <strong>BSNL Circuit</strong>
                 {renderPingBadge(record.bsnlPing)}
               </div>
               <div className="circuit-body">
-                {renderIpItem('IP', record.bsnlIp, 'bsnlIp')}
-                {renderIpItem('GW', record.bsnlGateway, 'bsnlGateway')}
+                {renderIpChip('IP', record.bsnlIp, 'bsnlIp')}
+                {renderIpChip('GW', record.bsnlGateway, 'bsnlGateway')}
                 {!record.bsnlIp && <span className="empty-sub">—</span>}
               </div>
             </div>
@@ -144,12 +237,12 @@ export default function RecordCard({ record, onEdit, onDelete, onExport, onNotif
             {/* JIO */}
             <div className="circuit-box">
               <div className="circuit-head">
-                <strong>Jio</strong>
+                <strong>Jio Circuit</strong>
                 {renderPingBadge(record.jioPing)}
               </div>
               <div className="circuit-body">
-                {renderIpItem('IP', record.jioIp, 'jioIp')}
-                {renderIpItem('GW', record.jioGateway, 'jioGateway')}
+                {renderIpChip('IP', record.jioIp, 'jioIp')}
+                {renderIpChip('GW', record.jioGateway, 'jioGateway')}
                 {!record.jioIp && <span className="empty-sub">—</span>}
               </div>
             </div>
@@ -157,37 +250,37 @@ export default function RecordCard({ record, onEdit, onDelete, onExport, onNotif
             {/* AIRTEL & CE */}
             <div className="circuit-box">
               <div className="circuit-head">
-                <strong>Airtel & CE</strong>
+                <strong>Airtel & CE Circuit</strong>
                 {renderPingBadge(record.airtelPing)}
               </div>
               <div className="circuit-body">
-                {renderIpItem('Airtel', record.airtelIp, 'airtelIp')}
-                {renderIpItem('GW', record.airtelGateway, 'airtelGateway')}
-                {renderIpItem('CE IP', record.ceIp, 'ceIp')}
+                {renderIpChip('Airtel', record.airtelIp, 'airtelIp')}
+                {renderIpChip('GW', record.airtelGateway, 'airtelGateway')}
+                {renderIpChip('CE IP', record.ceIp, 'ceIp')}
                 {!record.airtelIp && <span className="empty-sub">—</span>}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Handover & SD-WAN Checklist */}
+        {/* SD-WAN Handover & Sign-off Checklist */}
         <div className="site-section-panel">
           <div className="section-panel-header">
             <span className="panel-icon">📋</span>
-            <span className="panel-title">SD-WAN Handover & Checklist</span>
+            <span className="panel-title">SD-WAN Handover & Sign-off Checklist</span>
             <span className={`badge-pill ${record.configuration === 'Completed' ? 'good' : 'warn'}`}>
               Config: {record.configuration || 'Not completed'}
             </span>
           </div>
           <div className="checklist-badges-wrap">
-            <span className={`check-pill ${record.mp === 'Yes' ? 'good' : 'neutral'}`}>
-              MP Device: {record.mp || 'No'}
+            <span className={`check-pill ${record.mpAdded === 'Yes' ? 'good' : 'neutral'}`}>
+              MP Device: {record.mpAdded || 'No'}
             </span>
-            <span className={`check-pill ${record.online === 'Yes' ? 'good' : 'neutral'}`}>
-              Online: {record.online || 'No'}
+            <span className={`check-pill ${record.deviceOnline === 'Yes' ? 'good' : 'neutral'}`}>
+              Online: {record.deviceOnline || 'No'}
             </span>
-            <span className={`check-pill ${record.mail === 'Yes' ? 'good' : 'neutral'}`}>
-              Mail Sent: {record.mail || 'No'}
+            <span className={`check-pill ${record.mailSent === 'Yes' ? 'good' : 'neutral'}`}>
+              Mail Sent: {record.mailSent || 'No'}
             </span>
             <span className={`check-pill ${record.dcMail === 'Received' ? 'good' : 'neutral'}`}>
               DC Mail: {record.dcMail || 'Not received'}
@@ -195,8 +288,8 @@ export default function RecordCard({ record, onEdit, onDelete, onExport, onNotif
             <span className={`check-pill ${record.drcMail === 'Received' ? 'good' : 'neutral'}`}>
               DRC Mail: {record.drcMail || 'Not received'}
             </span>
-            <span className={`check-pill ${record.cables === 'Connected' ? 'good' : 'neutral'}`}>
-              Cables: {record.cables || 'Not connected'}
+            <span className={`check-pill ${record.cablesConnected === 'Connected' ? 'good' : 'neutral'}`}>
+              Cables: {record.cablesConnected || 'Not connected'}
             </span>
           </div>
         </div>
@@ -220,7 +313,7 @@ export default function RecordCard({ record, onEdit, onDelete, onExport, onNotif
           type="button"
           className="card-action-btn"
           onClick={() => onExport(record)}
-          title="Download single record as JSON"
+          title="Download single record JSON"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -234,7 +327,7 @@ export default function RecordCard({ record, onEdit, onDelete, onExport, onNotif
           type="button"
           className="card-action-btn danger"
           onClick={() => onDelete(record)}
-          title="Delete record from database"
+          title="Permanently remove site from database"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <polyline points="3 6 5 6 21 6"></polyline>

@@ -1,7 +1,6 @@
 const API_BASE = '/api';
-const TOKEN_KEY = 'branch_tracker_token';
-const USER_KEY = 'branch_tracker_user';
-const STORAGE_KEY = 'branchAtmTrackerV2';
+const TOKEN_KEY = 'canara_sdwan_token';
+const USER_KEY = 'canara_sdwan_user';
 
 function getStoredToken() {
   return localStorage.getItem(TOKEN_KEY) || '';
@@ -55,7 +54,7 @@ export const api = {
 
     const data = await res.json();
     if (!res.ok) {
-      throw new Error(data.error || 'Login failed. Please check credentials.');
+      throw new Error(data.error || 'Login failed. Please verify credentials.');
     }
 
     setStoredToken(data.token);
@@ -83,7 +82,7 @@ export const api = {
       setStoredUser(data.user);
       return data;
     } catch {
-      return { user: getStoredUser(), database: { type: 'local_cache' } };
+      return { user: getStoredUser(), database: { type: 'offline_or_session' } };
     }
   },
 
@@ -93,172 +92,147 @@ export const api = {
     setStoredUser(null);
   },
 
-  // Records: Get all records with filters
+  // Admin: User Management
+  async getUsers() {
+    const res = await fetch(`${API_BASE}/admin/users`, {
+      headers: authHeaders()
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to fetch users');
+    }
+    return await res.json();
+  },
+
+  async createUser(payload) {
+    const res = await fetch(`${API_BASE}/admin/users`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create user');
+    }
+    return await res.json();
+  },
+
+  async deleteUser(id) {
+    const res = await fetch(`${API_BASE}/admin/users/${id}`, {
+      method: 'DELETE',
+      headers: authHeaders()
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to delete user');
+    }
+    return await res.json();
+  },
+
+  // Records: Query
   async getRecords(params = {}) {
     const query = new URLSearchParams();
     if (params.kind) query.set('kind', params.kind);
     if (params.working) query.set('working', params.working);
     if (params.search) query.set('search', params.search);
+    if (params.claimedBy) query.set('claimedBy', params.claimedBy);
 
-    try {
-      const res = await fetch(`${API_BASE}/records?${query.toString()}`, {
-        headers: authHeaders()
-      });
+    const res = await fetch(`${API_BASE}/records?${query.toString()}`, {
+      headers: authHeaders()
+    });
 
-      if (res.status === 401) {
-        setStoredToken(null);
-        throw new Error('UNAUTHORIZED');
-      }
-
-      if (!res.ok) {
-        throw new Error(`Server returned HTTP ${res.status}`);
-      }
-
-      const data = await res.json();
-      if (Array.isArray(data) && !params.search && !params.working) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      }
-      return { data, isLive: true };
-    } catch (err) {
-      if (err.message === 'UNAUTHORIZED') throw err;
-      console.warn('[API] Backend query failed, using local offline fallback:', err.message);
-      const local = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-      let filtered = local;
-      if (params.kind) filtered = filtered.filter(r => r.kind === params.kind);
-      if (params.working) filtered = filtered.filter(r => r.working === params.working);
-      if (params.search) {
-        const q = params.search.toLowerCase();
-        filtered = filtered.filter(r => JSON.stringify(r).toLowerCase().includes(q));
-      }
-      return { data: filtered, isLive: false, error: err.message };
+    if (res.status === 401) {
+      setStoredToken(null);
+      throw new Error('UNAUTHORIZED');
     }
+
+    if (!res.ok) {
+      throw new Error(`Server returned HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    return { data, isLive: true };
   },
 
-  // Records: Create record
+  // Records: Create
   async createRecord(payload) {
-    try {
-      const res = await fetch(`${API_BASE}/records`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify(payload)
-      });
+    const res = await fetch(`${API_BASE}/records`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(payload)
+    });
 
-      if (res.status === 401) {
-        setStoredToken(null);
-        throw new Error('UNAUTHORIZED');
-      }
-
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error || `HTTP ${res.status}: Failed to create record`);
-      }
-
-      const created = await res.json();
-      return created;
-    } catch (err) {
-      if (err.message === 'UNAUTHORIZED') throw err;
-      // Local fallback
-      const now = new Date().toISOString();
-      const local = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-      const newRec = {
-        ...payload,
-        id: 'rec-' + Date.now(),
-        created: now,
-        updated: now,
-        createdBy: getStoredUser()?.username || 'admin'
-      };
-      local.unshift(newRec);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(local));
-      return newRec;
+    if (res.status === 401) {
+      setStoredToken(null);
+      throw new Error('UNAUTHORIZED');
     }
+
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.error || `Failed to create record`);
+    }
+
+    return await res.json();
   },
 
-  // Records: Update record
+  // Records: Update
   async updateRecord(id, updates) {
-    try {
-      const res = await fetch(`${API_BASE}/records/${id}`, {
-        method: 'PUT',
-        headers: authHeaders(),
-        body: JSON.stringify(updates)
-      });
+    const res = await fetch(`${API_BASE}/records/${id}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(updates)
+    });
 
-      if (res.status === 401) {
-        setStoredToken(null);
-        throw new Error('UNAUTHORIZED');
-      }
-
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error || `HTTP ${res.status}: Failed to update record`);
-      }
-
-      return await res.json();
-    } catch (err) {
-      if (err.message === 'UNAUTHORIZED') throw err;
-      const local = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-      const idx = local.findIndex(r => r.id === id);
-      if (idx !== -1) {
-        const updated = {
-          ...local[idx],
-          ...updates,
-          updated: new Date().toISOString(),
-          updatedBy: getStoredUser()?.username || 'admin'
-        };
-        local[idx] = updated;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(local));
-        return updated;
-      }
-      throw err;
+    if (res.status === 401) {
+      setStoredToken(null);
+      throw new Error('UNAUTHORIZED');
     }
+
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.error || `Failed to update record`);
+    }
+
+    return await res.json();
   },
 
-  // Records: Delete record
+  // Records: Claim Site (Link to user)
+  async claimRecord(id) {
+    const res = await fetch(`${API_BASE}/records/${id}/claim`, {
+      method: 'PUT',
+      headers: authHeaders()
+    });
+
+    if (res.status === 401) {
+      setStoredToken(null);
+      throw new Error('UNAUTHORIZED');
+    }
+
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.error || `Failed to claim site`);
+    }
+
+    return await res.json();
+  },
+
+  // Records: Delete
   async deleteRecord(id) {
-    try {
-      const res = await fetch(`${API_BASE}/records/${id}`, {
-        method: 'DELETE',
-        headers: authHeaders()
-      });
-      if (res.status === 401) {
-        setStoredToken(null);
-        throw new Error('UNAUTHORIZED');
-      }
-    } catch (err) {
-      if (err.message === 'UNAUTHORIZED') throw err;
-    }
-    const local = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]').filter(r => r.id !== id);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(local));
-    return true;
-  },
+    const res = await fetch(`${API_BASE}/records/${id}`, {
+      method: 'DELETE',
+      headers: authHeaders()
+    });
 
-  // Bulk Import
-  async bulkImport(records, mode = 'append') {
-    try {
-      const res = await fetch(`${API_BASE}/records/bulk`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ records, mode })
-      });
-      if (res.status === 401) {
-        setStoredToken(null);
-        throw new Error('UNAUTHORIZED');
-      }
-      if (!res.ok) throw new Error('Bulk import failed on server');
-      return await res.json();
-    } catch (err) {
-      if (err.message === 'UNAUTHORIZED') throw err;
-      const existing = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-      let merged;
-      if (mode === 'replace') {
-        merged = records;
-      } else {
-        const map = new Map(existing.map(r => [r.id, r]));
-        for (const item of records) map.set(item.id, item);
-        merged = Array.from(map.values());
-      }
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-      return { total: merged.length };
+    if (res.status === 401) {
+      setStoredToken(null);
+      throw new Error('UNAUTHORIZED');
     }
+
+    if (!res.ok) {
+      throw new Error(`Failed to delete record`);
+    }
+
+    return true;
   },
 
   // Stats
@@ -272,7 +246,6 @@ export const api = {
     return null;
   },
 
-  // Helper download file
   downloadFile(content, fileName, contentType) {
     const blob = new Blob([content], { type: contentType });
     const url = URL.createObjectURL(blob);

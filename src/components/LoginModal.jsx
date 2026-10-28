@@ -25,12 +25,6 @@ export default function LoginModal({ onLoginSuccess }) {
     }
   };
 
-  const handleQuickFill = () => {
-    setUsername('admin');
-    setPassword('admin@123');
-    setErrorMsg('');
-  };
-
   return (
     <div className="login-wrapper">
       <div className="login-card">
@@ -60,7 +54,7 @@ export default function LoginModal({ onLoginSuccess }) {
 
         <form onSubmit={handleSubmit} className="login-form">
           <div className="form-group">
-            <label htmlFor="login_username">Username or Employee ID</label>
+            <label htmlFor="login_username">Username</label>
             <div className="input-with-icon">
               <svg className="field-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
@@ -70,7 +64,7 @@ export default function LoginModal({ onLoginSuccess }) {
                 id="login_username"
                 type="text"
                 autoComplete="username"
-                placeholder="Enter username (e.g. admin)"
+                placeholder="Enter username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
@@ -119,16 +113,6 @@ export default function LoginModal({ onLoginSuccess }) {
               'Sign In to Dashboard'
             )}
           </button>
-
-          <div className="quick-demo-box">
-            <button
-              type="button"
-              className="quick-fill-btn"
-              onClick={handleQuickFill}
-            >
-              🔑 Quick Fill Demo (admin / admin@123)
-            </button>
-          </div>
         </form>
 
         <div className="login-footer">

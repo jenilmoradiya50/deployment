@@ -9,25 +9,23 @@ const { authMiddleware, optionalAuth, JWT_SECRET } = require('./middleware/auth'
 
 const app = express();
 
-// Security and CORS
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Body Parsing
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 // -------------------------------------------------------------
-// 1. HEALTH & SYSTEM ROUTES
+// 1. HEALTH & SYSTEM STATUS
 // -------------------------------------------------------------
 app.get('/api/health', async (req, res) => {
   const dbStatus = await db.getDbStatus();
   res.json({
     status: 'ok',
-    service: 'Branch & ATM Work Tracker API',
+    service: 'Canara Bank SD-WAN Work Tracker API',
     database: dbStatus,
     timestamp: new Date().toISOString()
   });
@@ -63,7 +61,8 @@ app.post('/api/auth/login', async (req, res) => {
         id: user.id,
         username: user.username,
         role: user.role,
-        name: user.name
+        name: user.name,
+        phone: user.phone
       },
       JWT_SECRET,
       { expiresIn: '7d' }
@@ -87,34 +86,74 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'User account not found' });
     }
     const dbStatus = await db.getDbStatus();
-    res.json({
-      user,
-      database: dbStatus
-    });
+    res.json({ user, database: dbStatus });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch user session' });
+    res.status(500).json({ error: 'Failed to fetch user profile' });
   }
 });
 
 // -------------------------------------------------------------
-// 3. RECORDS CRUD (PROTECTED)
+// 3. ADMIN USER MANAGEMENT (ADMIN ONLY)
+// -------------------------------------------------------------
+function requireAdmin(req, res, next) {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Access denied: Administrator privileges required.' });
+  }
+  next();
+}
+
+app.get('/api/admin/users', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const users = await db.getAllUsers();
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch users', details: err.message });
+  }
+});
+
+app.post('/api/admin/users', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const { username, password, name, phone, role } = req.body || {};
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required' });
+    }
+    const created = await db.createUser({ username, password, name, phone, role });
+    res.status(201).json(created);
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Failed to create user' });
+  }
+});
+
+app.delete('/api/admin/users/:id', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    if (req.params.id === req.user.id) {
+      return res.status(400).json({ error: 'Cannot delete your own active administrator account' });
+    }
+    const ok = await db.deleteUser(req.params.id);
+    if (!ok) return res.status(404).json({ error: 'User not found' });
+    res.json({ message: 'User deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// -------------------------------------------------------------
+// 4. SITE RECORDS CRUD (PROTECTED)
 // -------------------------------------------------------------
 app.get('/api/records', authMiddleware, async (req, res) => {
   try {
-    const { kind, working, search } = req.query;
-    const records = await db.getAllRecords({ kind, working, search });
+    const { kind, working, search, claimedBy } = req.query;
+    const records = await db.getAllRecords({ kind, working, search, claimedBy });
     res.json(records);
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch records', details: err.message });
+    res.status(500).json({ error: 'Failed to query records', details: err.message });
   }
 });
 
 app.get('/api/records/:id', authMiddleware, async (req, res) => {
   try {
     const record = await db.getRecordById(req.params.id);
-    if (!record) {
-      return res.status(404).json({ error: 'Record not found' });
-    }
+    if (!record) return res.status(404).json({ error: 'Record not found' });
     res.json(record);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch record' });
@@ -126,60 +165,48 @@ app.post('/api/records', authMiddleware, async (req, res) => {
     const data = req.body || {};
     const kind = data.kind || 'Branch';
 
-    // Validation
     if (kind === 'Branch' && (!data.dpCode || !data.dpCode.trim())) {
-      return res.status(400).json({ error: 'DP code is required for Branch records' });
+      return res.status(400).json({ error: 'Branch DP Code is required' });
     }
     if (kind === 'ATM' && (!data.atmId || !data.atmId.trim())) {
-      return res.status(400).json({ error: 'ATM ID is required for ATM records' });
+      return res.status(400).json({ error: 'ATM ID is required' });
     }
 
     const created = await db.createRecord(data, req.user);
     res.status(201).json(created);
   } catch (err) {
-    console.error('Create error:', err);
     res.status(500).json({ error: 'Failed to create record', details: err.message });
   }
 });
 
 app.put('/api/records/:id', authMiddleware, async (req, res) => {
   try {
-    const id = req.params.id;
-    const updates = req.body || {};
-    const updated = await db.updateRecord(id, updates, req.user);
-    if (!updated) {
-      return res.status(404).json({ error: 'Record not found' });
-    }
+    const updated = await db.updateRecord(req.params.id, req.body || {}, req.user);
+    if (!updated) return res.status(404).json({ error: 'Record not found' });
     res.json(updated);
   } catch (err) {
-    console.error('Update error:', err);
     res.status(500).json({ error: 'Failed to update record', details: err.message });
+  }
+});
+
+// Claim site endpoint
+app.put('/api/records/:id/claim', authMiddleware, async (req, res) => {
+  try {
+    const updated = await db.claimRecord(req.params.id, req.user);
+    if (!updated) return res.status(404).json({ error: 'Record not found' });
+    res.json({ message: 'Site claimed successfully', record: updated });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to claim site', details: err.message });
   }
 });
 
 app.delete('/api/records/:id', authMiddleware, async (req, res) => {
   try {
-    const id = req.params.id;
-    const success = await db.deleteRecord(id);
-    if (!success) {
-      return res.status(404).json({ error: 'Record not found' });
-    }
-    res.json({ message: 'Record deleted successfully', id });
+    const success = await db.deleteRecord(req.params.id);
+    if (!success) return res.status(404).json({ error: 'Record not found' });
+    res.json({ message: 'Record deleted successfully', id: req.params.id });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete record' });
-  }
-});
-
-app.post('/api/records/bulk', authMiddleware, async (req, res) => {
-  try {
-    const { records, mode } = req.body || {};
-    if (!Array.isArray(records)) {
-      return res.status(400).json({ error: 'Payload must include an array of records' });
-    }
-    const result = await db.bulkImportRecords(records, mode || 'append', req.user);
-    res.json({ message: `Successfully imported ${records.length} records`, ...result });
-  } catch (err) {
-    res.status(500).json({ error: 'Bulk import failed', details: err.message });
   }
 });
 
@@ -191,12 +218,16 @@ app.get('/api/export', optionalAuth, async (req, res) => {
 
     if (format === 'csv') {
       const fields = [
-        'id', 'kind', 'dpCode', 'atmId', 'vlan',
-        'lanIp', 'lanGateway', 'atmIp', 'atmGateway',
+        'id', 'kind', 'dpCode', 'atmId', 'feName', 'feNumber',
+        'newDeviceSerial', 'oldDeviceModel', 'oldDeviceSerial',
+        'vlanConfigured', 'vlanDetails', 'vlanRemoved',
+        'primaryLanIp', 'lanIpPrefix', 'primaryLanGateway',
+        'atmIp', 'atmGateway',
         'bsnlIp', 'bsnlGateway', 'bsnlPing',
         'jioIp', 'jioGateway', 'jioPing',
         'airtelIp', 'airtelGateway', 'ceIp', 'airtelPing',
-        'configuration', 'mp', 'online', 'mail', 'dcMail', 'drcMail', 'cables', 'working',
+        'configuration', 'mpAdded', 'deviceOnline', 'mailSent', 'dcMail', 'drcMail', 'cablesConnected', 'working',
+        'uatSubmitted', 'uatFormNo', 'claimedBy', 'claimedByName',
         'createdBy', 'updatedBy', 'created', 'updated'
       ];
 
@@ -210,12 +241,12 @@ app.get('/api/export', optionalAuth, async (req, res) => {
 
       const csvContent = [csvHeader, ...csvRows].join('\r\n');
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="${kind ? kind.toLowerCase() : 'all'}-records.csv"`);
+      res.setHeader('Content-Disposition', `attachment; filename="${kind ? kind.toLowerCase() : 'all'}-canara-sites.csv"`);
       return res.send(csvContent);
     }
 
     res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', `attachment; filename="${kind ? kind.toLowerCase() : 'all'}-records.json"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${kind ? kind.toLowerCase() : 'all'}-canara-sites.json"`);
     res.json(records);
   } catch (err) {
     res.status(500).json({ error: 'Export failed', details: err.message });
@@ -223,7 +254,7 @@ app.get('/api/export', optionalAuth, async (req, res) => {
 });
 
 // -------------------------------------------------------------
-// 4. STATIC CLIENT SERVING & SPA FALLBACK
+// 5. STATIC DISTRIBUTION FOR VITE SPA
 // -------------------------------------------------------------
 const distPath = path.join(__dirname, '..', 'dist');
 if (fs.existsSync(distPath)) {

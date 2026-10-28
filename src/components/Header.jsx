@@ -4,12 +4,14 @@ export default function Header({
   currentUser,
   dbStatus,
   onOpenImportExport,
+  onOpenUserManagement,
   onQuickBackup,
   onLogout
 }) {
-  const isMongo = dbStatus?.type === 'mongodb';
-  const username = currentUser?.username || 'admin';
+  const isPostgres = dbStatus?.type === 'postgresql';
+  const username = currentUser?.username || 'Admin@Canara';
   const userRole = currentUser?.role || 'admin';
+  const isAdmin = userRole === 'admin';
   const initials = username.slice(0, 2).toUpperCase();
 
   return (
@@ -24,20 +26,37 @@ export default function Header({
               <line x1="6" y1="18" x2="6.01" y2="18"></line>
             </svg>
             <div className="brand-text">
-              <h1>Branch & ATM Work Tracker</h1>
-              <p>SD-WAN Deployment, ISP Connectivity & Configuration Manager</p>
+              <h1>Canara Bank SD-WAN Tracker</h1>
+              <p>Branch & ATM Infrastructure Deployment & ISP Operations</p>
             </div>
           </div>
 
-          <div className="db-indicator-chip" title={isMongo ? 'Connected to MongoDB Atlas' : 'Using Local Storage DB'}>
-            <span className={`status-pulse ${isMongo ? 'mongo' : 'local'}`}></span>
+          <div className="db-indicator-chip" title={isPostgres ? 'Connected to Cloud PostgreSQL' : 'Using Session In-Memory Storage'}>
+            <span className={`status-pulse ${isPostgres ? 'mongo' : 'local'}`}></span>
             <span className="db-text">
-              {isMongo ? 'MongoDB Atlas Active' : 'Local Secure Database'}
+              {isPostgres ? 'PostgreSQL Cloud DB Active' : 'SQL Engine Active'}
             </span>
           </div>
         </div>
 
         <div className="header-actions">
+          {isAdmin && (
+            <button
+              type="button"
+              className="header-btn admin-highlight"
+              onClick={onOpenUserManagement}
+              title="Manage System Users and Field Engineers"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+              </svg>
+              Manage Users
+            </button>
+          )}
+
           <button
             type="button"
             className="header-btn"
@@ -56,7 +75,7 @@ export default function Header({
             type="button"
             className="header-btn"
             onClick={onOpenImportExport}
-            title="Data Management (Export CSV/JSON & Import Backups)"
+            title="Export CSV for Excel or JSON"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -64,7 +83,7 @@ export default function Header({
               <line x1="16" y1="13" x2="8" y2="13"></line>
               <line x1="16" y1="17" x2="8" y2="17"></line>
             </svg>
-            Data Manager
+            Export CSV / JSON
           </button>
 
           {/* User Profile & Logout */}
@@ -73,8 +92,8 @@ export default function Header({
               {initials}
             </div>
             <div className="user-details">
-              <span className="user-name">{username}</span>
-              <span className="user-role-pill">{userRole}</span>
+              <span className="user-name">{currentUser?.name || username}</span>
+              <span className="user-role-pill">{userRole === 'admin' ? 'ADMIN' : 'FE'}</span>
             </div>
             <button
               type="button"

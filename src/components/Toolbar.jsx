@@ -9,8 +9,8 @@ export default function Toolbar({
   onSearchChange,
   statusFilter,
   onStatusFilterChange,
-  ispFilter,
-  onIspFilterChange,
+  ownershipFilter,
+  onOwnershipFilterChange,
   onAddNew
 }) {
   return (
@@ -46,7 +46,7 @@ export default function Toolbar({
           <input
             type="text"
             className="search-input"
-            placeholder="Search DP code, ATM ID, IP, or Gateway..."
+            placeholder="Search DP, ATM, FE name/no, IP, serial..."
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
           />
@@ -68,22 +68,21 @@ export default function Toolbar({
           onChange={(e) => onStatusFilterChange(e.target.value)}
           aria-label="Filter by Working Status"
         >
-          <option value="all">Working Status: All</option>
-          <option value="working">🟢 Marked Working</option>
+          <option value="all">Status: All</option>
+          <option value="working">🟢 Working</option>
           <option value="notWorking">🔴 Not Working</option>
-          <option value="pending">⏳ Pending Confirmation</option>
+          <option value="pending">⏳ Pending</option>
         </select>
 
         <select
           className="filter-dropdown"
-          value={ispFilter}
-          onChange={(e) => onIspFilterChange(e.target.value)}
-          aria-label="Filter by ISP Circuit"
+          value={ownershipFilter}
+          onChange={(e) => onOwnershipFilterChange(e.target.value)}
+          aria-label="Filter by Site Assignment"
         >
-          <option value="all">ISP Filter: All</option>
-          <option value="bsnlOk">BSNL Ping OK</option>
-          <option value="jioOk">Jio Ping OK</option>
-          <option value="airtelOk">Airtel Ping OK</option>
+          <option value="all">Site Owner: All</option>
+          <option value="mine">📌 My Taken Sites</option>
+          <option value="unassigned">⚪ Unassigned / Available</option>
         </select>
 
         <button
