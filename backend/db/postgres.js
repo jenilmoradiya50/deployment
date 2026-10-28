@@ -17,8 +17,18 @@ let isInitialized = false;
 let memUsers = [
   {
     id: 'usr-admin-001',
-    username: DEFAULT_ADMIN_USER,
-    password_hash: bcrypt.hashSync(DEFAULT_ADMIN_PASS, 10),
+    username: 'Admin@Canara',
+    password_hash: bcrypt.hashSync('Qwerty@123', 10),
+    name: 'Canara Bank SD-WAN Admin',
+    phone: '9876543210',
+    role: 'admin',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  {
+    id: 'usr-admin-002',
+    username: 'admin',
+    password_hash: bcrypt.hashSync('Qwerty@123', 10),
     name: 'Canara Bank SD-WAN Admin',
     phone: '9876543210',
     role: 'admin',
@@ -235,21 +245,27 @@ async function initDatabase() {
       `);
 
       // 3. Ensure Default Admin exists
-      const userCheck = await client.query('SELECT id FROM users WHERE LOWER(username) = LOWER($1)', [DEFAULT_ADMIN_USER]);
+      const userCheck = await client.query('SELECT id FROM users WHERE LOWER(username) = LOWER($1)', ['admin@canara']);
       if (userCheck.rows.length === 0) {
-        const hashedPassword = await bcrypt.hash(DEFAULT_ADMIN_PASS, 10);
+        const hashedPassword = await bcrypt.hash('Qwerty@123', 10);
         await client.query(`
           INSERT INTO users (id, username, password_hash, name, phone, role)
-          VALUES ($1, $2, $3, $4, $5, $6)
+          VALUES ($1, $2, $3, $4, $5, $6), ($7, $8, $9, $10, $11, $12)
         `, [
           generateId('usr'),
-          DEFAULT_ADMIN_USER,
+          'Admin@Canara',
+          hashedPassword,
+          'Canara Bank SD-WAN Admin',
+          '9876543210',
+          'admin',
+          generateId('usr'),
+          'admin',
           hashedPassword,
           'Canara Bank SD-WAN Admin',
           '9876543210',
           'admin'
         ]);
-        console.log(`✅ [PostgreSQL] Initialized Default Admin: ${DEFAULT_ADMIN_USER}`);
+        console.log(`✅ [PostgreSQL] Initialized Default Admin: Admin@Canara`);
       }
 
       console.log('✅ [PostgreSQL] Database tables verified and ready.');

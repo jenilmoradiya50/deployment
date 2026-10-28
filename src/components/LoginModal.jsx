@@ -20,7 +20,12 @@ export default function LoginModal({ onLoginSuccess }) {
     try {
       await onLoginSuccess(username.trim(), password);
     } catch (err) {
-      setErrorMsg(err.message || 'Invalid username or password.');
+      const msg = err.message || '';
+      if (msg.includes('fetch') || msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+        setErrorMsg('Cannot reach backend server. Make sure "node server.js" is running in your terminal!');
+      } else {
+        setErrorMsg(msg || 'Invalid username or password.');
+      }
       setIsLoading(false);
     }
   };
