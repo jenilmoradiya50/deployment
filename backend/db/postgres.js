@@ -298,6 +298,13 @@ const db = {
       };
     }
     await initDatabase();
+    if (!isInitialized) {
+      return {
+        type: 'memory_session',
+        connected: false,
+        engine: 'In-Memory Fallback (PostgreSQL offline or unreachable from this network)'
+      };
+    }
     return {
       type: 'postgresql',
       connected: true,
@@ -313,41 +320,43 @@ const db = {
     const isDefaultPass = password === 'Qwerty@123';
     const p = getPool();
 
-    if (p) {
-      const res = await p.query('SELECT * FROM users WHERE LOWER(username) = LOWER($1)', [cleanUser]);
-      if (res.rows.length === 0) {
-        // If someone logs in with default credentials but table was cleared, auto-create
-        if (isDefaultAdmin && isDefaultPass) {
-          const newAdmin = await this.createUser({
-            username: 'Admin@Canara',
-            password: 'Qwerty@123',
-            name: 'Canara Bank SD-WAN Admin',
-            phone: '9876543210',
-            role: 'admin'
-          });
-          return newAdmin;
+    if (p && isInitialized) {
+      try {
+        const res = await p.query('SELECT * FROM users WHERE LOWER(username) = LOWER($1)', [cleanUser]);
+        if (res.rows.length === 0) {
+          if (isDefaultAdmin && isDefaultPass) {
+            const newAdmin = await this.createUser({
+              username: 'Admin@Canara',
+              password: 'Qwerty@123',
+              name: 'Canara Bank SD-WAN Admin',
+              phone: '9876543210',
+              role: 'admin'
+            });
+            return newAdmin;
+          }
+          return null;
         }
-        return null;
+
+        const user = res.rows[0];
+        let isMatch = await bcrypt.compare(password, user.password_hash).catch(() => false);
+
+        if (!isMatch && isDefaultAdmin && isDefaultPass) {
+          isMatch = true;
+          const correctHash = await bcrypt.hash('Qwerty@123', 10);
+          p.query('UPDATE users SET password_hash = $1 WHERE id = $2', [correctHash, user.id]).catch(() => {});
+        }
+
+        if (!isMatch) return null;
+        return {
+          id: user.id,
+          username: user.username,
+          name: user.name,
+          phone: user.phone,
+          role: user.role
+        };
+      } catch (err) {
+        console.warn('⚠️ [PostgreSQL] Auth query error, using local session:', err.message);
       }
-
-      const user = res.rows[0];
-      let isMatch = await bcrypt.compare(password, user.password_hash).catch(() => false);
-
-      // Resilient check: default admin with default password always passes & auto-syncs DB hash
-      if (!isMatch && isDefaultAdmin && isDefaultPass) {
-        isMatch = true;
-        const correctHash = await bcrypt.hash('Qwerty@123', 10);
-        p.query('UPDATE users SET password_hash = $1 WHERE id = $2', [correctHash, user.id]).catch(() => {});
-      }
-
-      if (!isMatch) return null;
-      return {
-        id: user.id,
-        username: user.username,
-        name: user.name,
-        phone: user.phone,
-        role: user.role
-      };
     }
 
     // In-memory fallback
@@ -379,9 +388,13 @@ const db = {
   async getUserById(id) {
     await initDatabase();
     const p = getPool();
-    if (p) {
-      const res = await p.query('SELECT id, username, name, phone, role FROM users WHERE id = $1', [id]);
-      return res.rows[0] || null;
+    if (p && isInitialized) {
+      try {
+        const res = await p.query('SELECT id, username, name, phone, role FROM users WHERE id = $1', [id]);
+        if (res.rows[0]) return res.rows[0];
+      } catch (err) {
+        console.warn('⚠️ [PostgreSQL] getUserById query error:', err.message);
+      }
     }
     const u = memUsers.find(x => x.id === id);
     if (!u) return null;
@@ -392,9 +405,13 @@ const db = {
   async getAllUsers() {
     await initDatabase();
     const p = getPool();
-    if (p) {
-      const res = await p.query('SELECT id, username, name, phone, role, created_at FROM users ORDER BY created_at DESC');
-      return res.rows;
+    if (p && isInitialized) {
+      try {
+        const res = await p.query('SELECT id, username, name, phone, role, created_at FROM users ORDER BY created_at DESC');
+        return res.rows;
+      } catch (err) {
+        console.warn('⚠️ [PostgreSQL] getAllUsers query error:', err.message);
+      }
     }
     return memUsers.map(u => ({
       id: u.id,
@@ -419,18 +436,23 @@ const db = {
     const newId = generateId('usr');
     const p = getPool();
 
-    if (p) {
-      const existing = await p.query('SELECT id FROM users WHERE LOWER(username) = LOWER($1)', [cleanUser]);
-      if (existing.rows.length > 0) {
-        throw new Error(`Username "${cleanUser}" already exists`);
-      }
+    if (p && isInitialized) {
+      try {
+        const existing = await p.query('SELECT id FROM users WHERE LOWER(username) = LOWER($1)', [cleanUser]);
+        if (existing.rows.length > 0) {
+          throw new Error(`Username "${cleanUser}" already exists`);
+        }
 
-      const res = await p.query(`
-        INSERT INTO users (id, username, password_hash, name, phone, role)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING id, username, name, phone, role, created_at
-      `, [newId, cleanUser, hashedPassword, name || cleanUser, phone || '', resolvedRole]);
-      return res.rows[0];
+        const res = await p.query(`
+          INSERT INTO users (id, username, password_hash, name, phone, role)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          RETURNING id, username, name, phone, role, created_at
+        `, [newId, cleanUser, hashedPassword, name || cleanUser, phone || '', resolvedRole]);
+        return res.rows[0];
+      } catch (err) {
+        if (err.message.includes('already exists')) throw err;
+        console.warn('⚠️ [PostgreSQL] createUser query error, falling back to memory:', err.message);
+      }
     }
 
     // In-memory
@@ -455,9 +477,13 @@ const db = {
   async deleteUser(id) {
     await initDatabase();
     const p = getPool();
-    if (p) {
-      const res = await p.query('DELETE FROM users WHERE id = $1 RETURNING id', [id]);
-      return res.rows.length > 0;
+    if (p && isInitialized) {
+      try {
+        const res = await p.query('DELETE FROM users WHERE id = $1 RETURNING id', [id]);
+        return res.rows.length > 0;
+      } catch (err) {
+        console.warn('⚠️ [PostgreSQL] deleteUser query error:', err.message);
+      }
     }
     const idx = memUsers.findIndex(u => u.id === id);
     if (idx !== -1) {
@@ -475,13 +501,16 @@ const db = {
     }
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     const p = getPool();
-    if (p) {
-      const res = await p.query(
-        'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id, username, name, phone, role',
-        [hashedPassword, id]
-      );
-      if (res.rows.length === 0) throw new Error('User not found');
-      return res.rows[0];
+    if (p && isInitialized) {
+      try {
+        const res = await p.query(
+          'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id, username, name, phone, role',
+          [hashedPassword, id]
+        );
+        if (res.rows.length > 0) return res.rows[0];
+      } catch (err) {
+        console.warn('⚠️ [PostgreSQL] updateUserPassword query error:', err.message);
+      }
     }
     const u = memUsers.find(x => x.id === id);
     if (!u) throw new Error('User not found');
@@ -495,45 +524,49 @@ const db = {
     await initDatabase();
     const p = getPool();
 
-    if (p) {
-      let query = 'SELECT * FROM records WHERE 1=1';
-      const params = [];
+    if (p && isInitialized) {
+      try {
+        let query = 'SELECT * FROM records WHERE 1=1';
+        const params = [];
 
-      if (filter.kind) {
-        params.push(filter.kind);
-        query += ` AND kind = $${params.length}`;
+        if (filter.kind) {
+          params.push(filter.kind);
+          query += ` AND kind = $${params.length}`;
+        }
+
+        if (filter.working) {
+          params.push(filter.working);
+          query += ` AND working = $${params.length}`;
+        }
+
+        if (filter.claimedBy) {
+          params.push(filter.claimedBy);
+          query += ` AND claimed_by = $${params.length}`;
+        }
+
+        if (filter.search) {
+          params.push(`%${filter.search.trim().toLowerCase()}%`);
+          const idx = params.length;
+          query += ` AND (
+            LOWER(dp_code) LIKE $${idx} OR
+            LOWER(atm_id) LIKE $${idx} OR
+            LOWER(primary_lan_ip) LIKE $${idx} OR
+            LOWER(fe_name) LIKE $${idx} OR
+            LOWER(fe_number) LIKE $${idx} OR
+            LOWER(new_device_serial) LIKE $${idx} OR
+            LOWER(old_device_serial) LIKE $${idx} OR
+            LOWER(bsnl_ip) LIKE $${idx} OR
+            LOWER(jio_ip) LIKE $${idx} OR
+            LOWER(airtel_ip) LIKE $${idx}
+          )`;
+        }
+
+        query += ' ORDER BY updated_at DESC';
+        const res = await p.query(query, params);
+        return res.rows.map(formatRecordRow);
+      } catch (err) {
+        console.warn('⚠️ [PostgreSQL] getAllRecords query error, falling back to memory:', err.message);
       }
-
-      if (filter.working) {
-        params.push(filter.working);
-        query += ` AND working = $${params.length}`;
-      }
-
-      if (filter.claimedBy) {
-        params.push(filter.claimedBy);
-        query += ` AND claimed_by = $${params.length}`;
-      }
-
-      if (filter.search) {
-        params.push(`%${filter.search.trim().toLowerCase()}%`);
-        const idx = params.length;
-        query += ` AND (
-          LOWER(dp_code) LIKE $${idx} OR
-          LOWER(atm_id) LIKE $${idx} OR
-          LOWER(primary_lan_ip) LIKE $${idx} OR
-          LOWER(fe_name) LIKE $${idx} OR
-          LOWER(fe_number) LIKE $${idx} OR
-          LOWER(new_device_serial) LIKE $${idx} OR
-          LOWER(old_device_serial) LIKE $${idx} OR
-          LOWER(bsnl_ip) LIKE $${idx} OR
-          LOWER(jio_ip) LIKE $${idx} OR
-          LOWER(airtel_ip) LIKE $${idx}
-        )`;
-      }
-
-      query += ' ORDER BY updated_at DESC';
-      const res = await p.query(query, params);
-      return res.rows.map(formatRecordRow);
     }
 
     // In-memory fallback
@@ -554,9 +587,13 @@ const db = {
   async getRecordById(id) {
     await initDatabase();
     const p = getPool();
-    if (p) {
-      const res = await p.query('SELECT * FROM records WHERE id = $1', [id]);
-      return res.rows.length > 0 ? formatRecordRow(res.rows[0]) : null;
+    if (p && isInitialized) {
+      try {
+        const res = await p.query('SELECT * FROM records WHERE id = $1', [id]);
+        if (res.rows.length > 0) return formatRecordRow(res.rows[0]);
+      } catch (err) {
+        console.warn('⚠️ [PostgreSQL] getRecordById query error:', err.message);
+      }
     }
     const r = memRecords.find(x => x.id === id);
     return r ? formatRecordRow(r) : null;
@@ -569,57 +606,58 @@ const db = {
     const authorName = user.name || author;
     const newId = generateId('site');
 
-    // Clean secondary LAN IPs limit to max 3
     let secondaryIps = Array.isArray(data.secondaryLanIps) ? data.secondaryLanIps.slice(0, 3) : [];
-
-    // Claimed by defaults to creator unless specified
     const claimedBy = data.claimedBy || author;
     const claimedByName = data.claimedByName || authorName;
 
     const p = getPool();
-    if (p) {
-      const sql = `
-        INSERT INTO records (
-          id, kind, dp_code, atm_id, fe_name, fe_number,
-          new_device_serial, old_device_model, old_device_serial,
-          vlan_configured, vlan_details, vlan_removed,
-          primary_lan_ip, lan_ip_prefix, primary_lan_gateway, secondary_lan_ips,
-          atm_ip, atm_gateway,
-          bsnl_ip, bsnl_gateway, bsnl_ping,
-          jio_ip, jio_gateway, jio_ping,
-          airtel_ip, airtel_gateway, ce_ip, airtel_ping,
-          configuration, mp_added, device_online, mail_sent, dc_mail, drc_mail, cables_connected, working,
-          uat_submitted, uat_form_no, claimed_by, claimed_by_name, notes, created_by, updated_by
-        ) VALUES (
-          $1, $2, $3, $4, $5, $6,
-          $7, $8, $9,
-          $10, $11, $12,
-          $13, $14, $15, $16,
-          $17, $18,
-          $19, $20, $21,
-          $22, $23, $24,
-          $25, $26, $27, $28,
-          $29, $30, $31, $32, $33, $34, $35, $36,
-          $37, $38, $39, $40, $41, $42, $43
-        ) RETURNING *;
-      `;
+    if (p && isInitialized) {
+      try {
+        const sql = `
+          INSERT INTO records (
+            id, kind, dp_code, atm_id, fe_name, fe_number,
+            new_device_serial, old_device_model, old_device_serial,
+            vlan_configured, vlan_details, vlan_removed,
+            primary_lan_ip, lan_ip_prefix, primary_lan_gateway, secondary_lan_ips,
+            atm_ip, atm_gateway,
+            bsnl_ip, bsnl_gateway, bsnl_ping,
+            jio_ip, jio_gateway, jio_ping,
+            airtel_ip, airtel_gateway, ce_ip, airtel_ping,
+            configuration, mp_added, device_online, mail_sent, dc_mail, drc_mail, cables_connected, working,
+            uat_submitted, uat_form_no, claimed_by, claimed_by_name, notes, created_by, updated_by
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6,
+            $7, $8, $9,
+            $10, $11, $12,
+            $13, $14, $15, $16,
+            $17, $18,
+            $19, $20, $21,
+            $22, $23, $24,
+            $25, $26, $27, $28,
+            $29, $30, $31, $32, $33, $34, $35, $36,
+            $37, $38, $39, $40, $41, $42, $43
+          ) RETURNING *;
+        `;
 
-      const values = [
-        newId, data.kind || 'Branch', data.dpCode || '', data.atmId || '', data.feName || '', data.feNumber || '',
-        data.newDeviceSerial || '', data.oldDeviceModel || '', data.oldDeviceSerial || '',
-        data.vlanConfigured || 'No', data.vlanDetails || '', data.vlanRemoved || 'Not Removed',
-        data.primaryLanIp || data.lanIp || '', data.lanIpPrefix || '', data.primaryLanGateway || data.lanGateway || '', JSON.stringify(secondaryIps),
-        data.atmIp || '', data.atmGateway || '',
-        data.bsnlIp || '', data.bsnlGateway || '', data.bsnlPing || 'No',
-        data.jioIp || '', data.jioGateway || '', data.jioPing || 'No',
-        data.airtelIp || '', data.airtelGateway || '', data.ceIp || '', data.airtelPing || 'No',
-        data.configuration || 'Not completed', data.mpAdded || data.mp || 'No', data.deviceOnline || data.online || 'No', data.mailSent || data.mail || 'No',
-        data.dcMail || 'Not received', data.drcMail || 'Not received', data.cablesConnected || data.cables || 'Not connected', data.working || 'No',
-        data.uatSubmitted || 'No', data.uatFormNo || '', claimedBy, claimedByName, data.notes || '', author, author
-      ];
+        const values = [
+          newId, data.kind || 'Branch', data.dpCode || '', data.atmId || '', data.feName || '', data.feNumber || '',
+          data.newDeviceSerial || '', data.oldDeviceModel || '', data.oldDeviceSerial || '',
+          data.vlanConfigured || 'No', data.vlanDetails || '', data.vlanRemoved || 'Not Removed',
+          data.primaryLanIp || data.lanIp || '', data.lanIpPrefix || '', data.primaryLanGateway || data.lanGateway || '', JSON.stringify(secondaryIps),
+          data.atmIp || '', data.atmGateway || '',
+          data.bsnlIp || '', data.bsnlGateway || '', data.bsnlPing || 'No',
+          data.jioIp || '', data.jioGateway || '', data.jioPing || 'No',
+          data.airtelIp || '', data.airtelGateway || '', data.ceIp || '', data.airtelPing || 'No',
+          data.configuration || 'Not completed', data.mpAdded || data.mp || 'No', data.deviceOnline || data.online || 'No', data.mailSent || data.mail || 'No',
+          data.dcMail || 'Not received', data.drcMail || 'Not received', data.cablesConnected || data.cables || 'Not connected', data.working || 'No',
+          data.uatSubmitted || 'No', data.uatFormNo || '', claimedBy, claimedByName, data.notes || '', author, author
+        ];
 
-      const res = await p.query(sql, values);
-      return formatRecordRow(res.rows[0]);
+        const res = await p.query(sql, values);
+        return formatRecordRow(res.rows[0]);
+      } catch (err) {
+        console.warn('⚠️ [PostgreSQL] createRecord query error, using local fallback:', err.message);
+      }
     }
 
     // In-memory
@@ -686,105 +724,80 @@ const db = {
       secondaryIps = Array.isArray(updates.secondaryLanIps) ? updates.secondaryLanIps.slice(0, 3) : [];
     }
 
-    if (p) {
-      const existing = await p.query('SELECT * FROM records WHERE id = $1', [id]);
-      if (existing.rows.length === 0) return null;
+    if (p && isInitialized) {
+      try {
+        const existing = await p.query('SELECT * FROM records WHERE id = $1', [id]);
+        if (existing.rows.length === 0) return null;
 
-      const sql = `
-        UPDATE records SET
-          kind = COALESCE($2, kind),
-          dp_code = COALESCE($3, dp_code),
-          atm_id = COALESCE($4, atm_id),
-          fe_name = COALESCE($5, fe_name),
-          fe_number = COALESCE($6, fe_number),
-          new_device_serial = COALESCE($7, new_device_serial),
-          old_device_model = COALESCE($8, old_device_model),
-          old_device_serial = COALESCE($9, old_device_serial),
-          vlan_configured = COALESCE($10, vlan_configured),
-          vlan_details = COALESCE($11, vlan_details),
-          vlan_removed = COALESCE($12, vlan_removed),
-          primary_lan_ip = COALESCE($13, primary_lan_ip),
-          lan_ip_prefix = COALESCE($14, lan_ip_prefix),
-          primary_lan_gateway = COALESCE($15, primary_lan_gateway),
-          secondary_lan_ips = COALESCE($16, secondary_lan_ips),
-          atm_ip = COALESCE($17, atm_ip),
-          atm_gateway = COALESCE($18, atm_gateway),
-          bsnl_ip = COALESCE($19, bsnl_ip),
-          bsnl_gateway = COALESCE($20, bsnl_gateway),
-          bsnl_ping = COALESCE($21, bsnl_ping),
-          jio_ip = COALESCE($22, jio_ip),
-          jio_gateway = COALESCE($23, jio_gateway),
-          jio_ping = COALESCE($24, jio_ping),
-          airtel_ip = COALESCE($25, airtel_ip),
-          airtel_gateway = COALESCE($26, airtel_gateway),
-          ce_ip = COALESCE($27, ce_ip),
-          airtel_ping = COALESCE($28, airtel_ping),
-          configuration = COALESCE($29, configuration),
-          mp_added = COALESCE($30, mp_added),
-          device_online = COALESCE($31, device_online),
-          mail_sent = COALESCE($32, mail_sent),
-          dc_mail = COALESCE($33, dc_mail),
-          drc_mail = COALESCE($34, drc_mail),
-          cables_connected = COALESCE($35, cables_connected),
-          working = COALESCE($36, working),
-          uat_submitted = COALESCE($37, uat_submitted),
-          uat_form_no = COALESCE($38, uat_form_no),
-          claimed_by = COALESCE($39, claimed_by),
-          claimed_by_name = COALESCE($40, claimed_by_name),
-          notes = COALESCE($41, notes),
-          updated_by = $42,
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = $1
-        RETURNING *;
-      `;
+        const sql = `
+          UPDATE records SET
+            kind = COALESCE($2, kind),
+            dp_code = COALESCE($3, dp_code),
+            atm_id = COALESCE($4, atm_id),
+            fe_name = COALESCE($5, fe_name),
+            fe_number = COALESCE($6, fe_number),
+            new_device_serial = COALESCE($7, new_device_serial),
+            old_device_model = COALESCE($8, old_device_model),
+            old_device_serial = COALESCE($9, old_device_serial),
+            vlan_configured = COALESCE($10, vlan_configured),
+            vlan_details = COALESCE($11, vlan_details),
+            vlan_removed = COALESCE($12, vlan_removed),
+            primary_lan_ip = COALESCE($13, primary_lan_ip),
+            lan_ip_prefix = COALESCE($14, lan_ip_prefix),
+            primary_lan_gateway = COALESCE($15, primary_lan_gateway),
+            secondary_lan_ips = COALESCE($16, secondary_lan_ips),
+            atm_ip = COALESCE($17, atm_ip),
+            atm_gateway = COALESCE($18, atm_gateway),
+            bsnl_ip = COALESCE($19, bsnl_ip),
+            bsnl_gateway = COALESCE($20, bsnl_gateway),
+            bsnl_ping = COALESCE($21, bsnl_ping),
+            jio_ip = COALESCE($22, jio_ip),
+            jio_gateway = COALESCE($23, jio_gateway),
+            jio_ping = COALESCE($24, jio_ping),
+            airtel_ip = COALESCE($25, airtel_ip),
+            airtel_gateway = COALESCE($26, airtel_gateway),
+            ce_ip = COALESCE($27, ce_ip),
+            airtel_ping = COALESCE($28, airtel_ping),
+            configuration = COALESCE($29, configuration),
+            mp_added = COALESCE($30, mp_added),
+            device_online = COALESCE($31, device_online),
+            mail_sent = COALESCE($32, mail_sent),
+            dc_mail = COALESCE($33, dc_mail),
+            drc_mail = COALESCE($34, drc_mail),
+            cables_connected = COALESCE($35, cables_connected),
+            working = COALESCE($36, working),
+            uat_submitted = COALESCE($37, uat_submitted),
+            uat_form_no = COALESCE($38, uat_form_no),
+            claimed_by = COALESCE($39, claimed_by),
+            claimed_by_name = COALESCE($40, claimed_by_name),
+            notes = COALESCE($41, notes),
+            updated_by = $42,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = $1
+          RETURNING *;
+        `;
 
-      const values = [
-        id,
-        updates.kind,
-        updates.dpCode,
-        updates.atmId,
-        updates.feName,
-        updates.feNumber,
-        updates.newDeviceSerial,
-        updates.oldDeviceModel,
-        updates.oldDeviceSerial,
-        updates.vlanConfigured,
-        updates.vlanDetails,
-        updates.vlanRemoved,
-        updates.primaryLanIp ?? updates.lanIp,
-        updates.lanIpPrefix,
-        updates.primaryLanGateway ?? updates.lanGateway,
-        secondaryIps !== undefined ? JSON.stringify(secondaryIps) : null,
-        updates.atmIp,
-        updates.atmGateway,
-        updates.bsnlIp,
-        updates.bsnlGateway,
-        updates.bsnlPing,
-        updates.jioIp,
-        updates.jioGateway,
-        updates.jioPing,
-        updates.airtelIp,
-        updates.airtelGateway,
-        updates.ceIp,
-        updates.airtelPing,
-        updates.configuration,
-        updates.mpAdded ?? updates.mp,
-        updates.deviceOnline ?? updates.online,
-        updates.mailSent ?? updates.mail,
-        updates.dcMail,
-        updates.drcMail,
-        updates.cablesConnected ?? updates.cables,
-        updates.working,
-        updates.uatSubmitted,
-        updates.uatFormNo,
-        updates.claimedBy,
-        updates.claimedByName,
-        updates.notes,
-        author
-      ];
+        const values = [
+          id, updates.kind, updates.dpCode, updates.atmId, updates.feName, updates.feNumber,
+          updates.newDeviceSerial, updates.oldDeviceModel, updates.oldDeviceSerial,
+          updates.vlanConfigured, updates.vlanDetails, updates.vlanRemoved,
+          updates.primaryLanIp ?? updates.lanIp, updates.lanIpPrefix, updates.primaryLanGateway ?? updates.lanGateway,
+          secondaryIps !== undefined ? JSON.stringify(secondaryIps) : null,
+          updates.atmIp, updates.atmGateway,
+          updates.bsnlIp, updates.bsnlGateway, updates.bsnlPing,
+          updates.jioIp, updates.jioGateway, updates.jioPing,
+          updates.airtelIp, updates.airtelGateway, updates.ceIp, updates.airtelPing,
+          updates.configuration, updates.mpAdded ?? updates.mp, updates.deviceOnline ?? updates.online, updates.mailSent ?? updates.mail,
+          updates.dcMail, updates.drcMail, updates.cablesConnected ?? updates.cables, updates.working,
+          updates.uatSubmitted, updates.uatFormNo, updates.claimedBy, updates.claimedByName,
+          updates.notes, author
+        ];
 
-      const res = await p.query(sql, values);
-      return formatRecordRow(res.rows[0]);
+        const res = await p.query(sql, values);
+        return formatRecordRow(res.rows[0]);
+      } catch (err) {
+        console.warn('⚠️ [PostgreSQL] updateRecord query error, using local fallback:', err.message);
+      }
     }
 
     // In-memory
@@ -844,9 +857,13 @@ const db = {
   async deleteRecord(id) {
     await initDatabase();
     const p = getPool();
-    if (p) {
-      const res = await p.query('DELETE FROM records WHERE id = $1 RETURNING id', [id]);
-      return res.rows.length > 0;
+    if (p && isInitialized) {
+      try {
+        const res = await p.query('DELETE FROM records WHERE id = $1 RETURNING id', [id]);
+        return res.rows.length > 0;
+      } catch (err) {
+        console.warn('⚠️ [PostgreSQL] deleteRecord query error:', err.message);
+      }
     }
     const idx = memRecords.findIndex(r => r.id === id);
     if (idx !== -1) {
@@ -868,35 +885,39 @@ const db = {
   async getStats() {
     await initDatabase();
     const p = getPool();
-    if (p) {
-      const [tot, brTot, brOk, atmTot, atmOk] = await Promise.all([
-        p.query('SELECT COUNT(*) FROM records'),
-        p.query("SELECT COUNT(*) FROM records WHERE kind = 'Branch'"),
-        p.query("SELECT COUNT(*) FROM records WHERE kind = 'Branch' AND working = 'Yes'"),
-        p.query("SELECT COUNT(*) FROM records WHERE kind = 'ATM'"),
-        p.query("SELECT COUNT(*) FROM records WHERE kind = 'ATM' AND working = 'Yes'")
-      ]);
+    if (p && isInitialized) {
+      try {
+        const [tot, brTot, brOk, atmTot, atmOk] = await Promise.all([
+          p.query('SELECT COUNT(*) FROM records'),
+          p.query("SELECT COUNT(*) FROM records WHERE kind = 'Branch'"),
+          p.query("SELECT COUNT(*) FROM records WHERE kind = 'Branch' AND working = 'Yes'"),
+          p.query("SELECT COUNT(*) FROM records WHERE kind = 'ATM'"),
+          p.query("SELECT COUNT(*) FROM records WHERE kind = 'ATM' AND working = 'Yes'")
+        ]);
 
-      const total = parseInt(tot.rows[0].count, 10);
-      const branchTotal = parseInt(brTot.rows[0].count, 10);
-      const branchWorking = parseInt(brOk.rows[0].count, 10);
-      const atmTotal = parseInt(atmTot.rows[0].count, 10);
-      const atmWorking = parseInt(atmOk.rows[0].count, 10);
+        const total = parseInt(tot.rows[0].count, 10);
+        const branchTotal = parseInt(brTot.rows[0].count, 10);
+        const branchWorking = parseInt(brOk.rows[0].count, 10);
+        const atmTotal = parseInt(atmTot.rows[0].count, 10);
+        const atmWorking = parseInt(atmOk.rows[0].count, 10);
 
-      return {
-        total,
-        database: 'PostgreSQL Cloud Database (Supabase / Vercel Postgres)',
-        branch: {
-          total: branchTotal,
-          working: branchWorking,
-          pending: Math.max(0, branchTotal - branchWorking)
-        },
-        atm: {
-          total: atmTotal,
-          working: atmWorking,
-          pending: Math.max(0, atmTotal - atmWorking)
-        }
-      };
+        return {
+          total,
+          database: 'PostgreSQL Cloud Database (Supabase / Vercel Postgres)',
+          branch: {
+            total: branchTotal,
+            working: branchWorking,
+            pending: Math.max(0, branchTotal - branchWorking)
+          },
+          atm: {
+            total: atmTotal,
+            working: atmWorking,
+            pending: Math.max(0, atmTotal - atmWorking)
+          }
+        };
+      } catch (err) {
+        console.warn('⚠️ [PostgreSQL] getStats query error:', err.message);
+      }
     }
 
     // In-memory stats
