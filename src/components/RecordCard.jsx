@@ -208,9 +208,6 @@ export default function RecordCard({ record, currentUser, onEdit, onDelete, onCl
                 </div>
               ) : null
             ))}
-
-            {isBranch && renderIpChip('ATM IP', record.atmIp, 'atmIp')}
-            {isBranch && renderIpChip('2nd ATM IP', record.atmGateway, 'atmGateway')}
           </div>
         </div>
 
@@ -273,8 +270,8 @@ export default function RecordCard({ record, currentUser, onEdit, onDelete, onCl
             </span>
           </div>
           <div className="checklist-badges-wrap">
-            <span className={`check-pill ${record.mpAdded === 'Yes' ? 'good' : 'neutral'}`}>
-              MP Device: {record.mpAdded || 'No'}
+            <span className={`check-pill ${record.mpAdded === 'Yes' || record.csAdded === 'Yes' ? 'good' : 'neutral'}`}>
+              Device in CS: {record.csAdded || record.mpAdded || 'No'}
             </span>
             <span className={`check-pill ${record.deviceOnline === 'Yes' ? 'good' : 'neutral'}`}>
               Online: {record.deviceOnline || 'No'}

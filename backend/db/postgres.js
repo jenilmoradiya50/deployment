@@ -150,6 +150,7 @@ function formatRecordRow(row) {
     airtelPing: row.airtel_ping || 'No',
     configuration: row.configuration || 'Not completed',
     mpAdded: row.mp_added || 'No',
+    csAdded: row.mp_added || 'No',
     deviceOnline: row.device_online || 'No',
     mailSent: row.mail_sent || 'No',
     dcMail: row.dc_mail || 'Not received',

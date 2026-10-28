@@ -222,11 +222,10 @@ app.get('/api/export', optionalAuth, async (req, res) => {
         'newDeviceSerial', 'oldDeviceModel', 'oldDeviceSerial',
         'vlanConfigured', 'vlanDetails', 'vlanRemoved',
         'primaryLanIp', 'lanIpPrefix', 'primaryLanGateway',
-        'atmIp', 'atmGateway',
         'bsnlIp', 'bsnlGateway', 'bsnlPing',
         'jioIp', 'jioGateway', 'jioPing',
         'airtelIp', 'airtelGateway', 'ceIp', 'airtelPing',
-        'configuration', 'mpAdded', 'deviceOnline', 'mailSent', 'dcMail', 'drcMail', 'cablesConnected', 'working',
+        'configuration', 'csAdded', 'deviceOnline', 'mailSent', 'dcMail', 'drcMail', 'cablesConnected', 'working',
         'uatSubmitted', 'uatFormNo', 'claimedBy', 'claimedByName',
         'createdBy', 'updatedBy', 'created', 'updated'
       ];

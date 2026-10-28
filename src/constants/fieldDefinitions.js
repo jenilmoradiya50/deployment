@@ -2,7 +2,7 @@ export const SECTIONS = [
   {
     id: 'lan',
     title: 'LAN CONFIGURATION',
-    fields: ['vlan', 'lanIp', 'lanGateway', 'atmIp', 'atmGateway']
+    fields: ['vlan', 'lanIp', 'lanIpPrefix', 'lanGateway']
   },
   {
     id: 'bsnl',
@@ -24,7 +24,7 @@ export const SECTIONS = [
     title: 'CONFIGURATION & HANDOVER',
     fields: [
       'configuration',
-      'mp',
+      'cs',
       'online',
       'mail',
       'dcMail',
@@ -62,32 +62,23 @@ export const FIELD_DEFINITIONS = {
   },
   lanIp: {
     id: 'lanIp',
-    label: 'LAN IP',
+    label: 'Primary LAN IP',
     type: 'text',
     placeholder: 'e.g. 10.24.120.1',
     isIp: true
   },
+  lanIpPrefix: {
+    id: 'lanIpPrefix',
+    label: 'LAN Prefix',
+    type: 'text',
+    placeholder: 'e.g. /24, /28',
+    isIp: false
+  },
   lanGateway: {
     id: 'lanGateway',
-    label: 'LAN Gateway',
+    label: 'Primary LAN Gateway',
     type: 'text',
     placeholder: 'e.g. 10.24.120.254',
-    isIp: true
-  },
-  atmIp: {
-    id: 'atmIp',
-    label: 'ATM IP',
-    type: 'text',
-    placeholder: 'e.g. 10.24.120.50',
-    branchOnly: true,
-    isIp: true
-  },
-  atmGateway: {
-    id: 'atmGateway',
-    label: 'Second ATM IP',
-    type: 'text',
-    placeholder: 'e.g. 10.24.120.51',
-    branchOnly: true,
     isIp: true
   },
 
@@ -171,9 +162,9 @@ export const FIELD_DEFINITIONS = {
     type: 'choice',
     options: ['Completed', 'Not completed']
   },
-  mp: {
-    id: 'mp',
-    label: 'Device added in MP?',
+  cs: {
+    id: 'cs',
+    label: 'Device added in CS?',
     type: 'choice',
     options: ['Yes', 'No']
   },

@@ -410,33 +410,6 @@ export default function RecordFormModal({ kind, recordToEdit, currentUser, users
                     onChange={(e) => handleChange('primaryLanGateway', e.target.value)}
                   />
                 </div>
-
-                {isBranch && (
-                  <>
-                    <div className="modal-form-field">
-                      <label htmlFor="f_atmIp" className="field-title">ATM IP</label>
-                      <input
-                        id="f_atmIp"
-                        type="text"
-                        className="field-input ip-code"
-                        placeholder="e.g. 10.24.120.50"
-                        value={formData.atmIp || ''}
-                        onChange={(e) => handleChange('atmIp', e.target.value)}
-                      />
-                    </div>
-                    <div className="modal-form-field">
-                      <label htmlFor="f_atmGateway" className="field-title">Second ATM IP</label>
-                      <input
-                        id="f_atmGateway"
-                        type="text"
-                        className="field-input ip-code"
-                        placeholder="e.g. 10.24.120.51"
-                        value={formData.atmGateway || ''}
-                        onChange={(e) => handleChange('atmGateway', e.target.value)}
-                      />
-                    </div>
-                  </>
-                )}
               </div>
 
               {/* Dynamic Secondary LAN IPs (Limit 3) */}
@@ -623,7 +596,7 @@ export default function RecordFormModal({ kind, recordToEdit, currentUser, users
               </div>
               <div className="form-fields-grid">
                 {renderRadioPill('configuration', 'Configuration Status', ['Completed', 'Not completed'])}
-                {renderRadioPill('mpAdded', 'Device Added in MP?', ['Yes', 'No'])}
+                {renderRadioPill('mpAdded', 'Device Added in CS?', ['Yes', 'No'])}
                 {renderRadioPill('deviceOnline', 'Device Online?', ['Yes', 'No'])}
                 {renderRadioPill('mailSent', 'Handover Mail Sent?', ['Yes', 'No'])}
                 {renderRadioPill('dcMail', 'Mail from DC', ['Received', 'Not received'])}
