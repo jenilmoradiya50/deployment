@@ -13,6 +13,7 @@ const DEFAULT_ADMIN_PASS = process.env.ADMIN_PASSWORD || 'Qwerty@123';
 let pool = null;
 let isInitialized = false;
 let initPromise = null;
+let lastInitError = null;
 
 // In-memory fallback if DATABASE_URL is not set yet (100% in-memory, ZERO files on disk)
 let memUsers = [
@@ -92,7 +93,10 @@ let memRecords = [
 
 function sanitizeConnectionString(raw) {
   if (!raw) return raw;
-  const str = raw.trim();
+  let str = String(raw).trim();
+  // Strip surrounding quotes if user copied "..." or '...'
+  str = str.replace(/^["']+|["']+$/g, '').trim();
+
   // If connection string contains unencoded '@' in password, encode it
   const match = str.match(/^(postgres(?:ql)?:\/\/[^:]+:)(.*)@([^@\/]+)(:\d+)?(\/.*)?$/);
   if (match) {
@@ -105,7 +109,12 @@ function sanitizeConnectionString(raw) {
 }
 
 function getPool() {
-  const rawConnString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  const rawConnString =
+    process.env.POSTGRES_URL ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_PRISMA_URL ||
+    process.env.POSTGRES_URL_NON_POOLING;
+
   if (!rawConnString) {
     return null;
   }
@@ -120,7 +129,7 @@ function getPool() {
       },
       max: 10,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 8000
+      connectionTimeoutMillis: 10000
     });
 
     pool.on('error', (err) => {
@@ -310,11 +319,13 @@ async function initDatabase() {
 
         console.log('✅ [PostgreSQL] Database tables verified and ready.');
         isInitialized = true;
+        lastInitError = null;
       } finally {
         client.release();
       }
     } catch (err) {
       console.error('⚠️ [PostgreSQL] Initialization error:', err.message);
+      lastInitError = err.message;
       isInitialized = false;
       initPromise = null;
     }
@@ -330,9 +341,9 @@ const db = {
     if (!p) {
       return {
         type: 'memory_session',
-        connected: true,
-        engine: 'In-Memory (Awaiting DATABASE_URL / Supabase)',
-        notice: 'Zero files on disk. Set DATABASE_URL to persist to Supabase or Vercel Postgres.'
+        connected: false,
+        engine: 'In-Memory (Awaiting DATABASE_URL or Vercel Postgres)',
+        notice: 'No database URL detected. Attach Vercel Postgres Storage or set DATABASE_URL.'
       };
     }
     await initDatabase();
@@ -340,13 +351,14 @@ const db = {
       return {
         type: 'memory_session',
         connected: false,
-        engine: 'In-Memory Fallback (PostgreSQL offline or unreachable from this network)'
+        engine: 'In-Memory Fallback',
+        error: lastInitError || 'PostgreSQL connection failed or timed out'
       };
     }
     return {
       type: 'postgresql',
       connected: true,
-      engine: 'PostgreSQL Cloud (Supabase / Vercel Postgres)'
+      engine: 'PostgreSQL Cloud (Vercel Postgres / Supabase)'
     };
   },
 
