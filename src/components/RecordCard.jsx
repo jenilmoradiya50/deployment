@@ -37,7 +37,7 @@ export default function RecordCard({
   const hasPendingTransfer = Boolean(record.transferRequestedBy);
   const isRequester = record.transferRequestedBy && record.transferRequestedBy.toLowerCase() === uname;
   const isCreatedByMe = record.createdBy && record.createdBy.toLowerCase() === uname;
-  const canEdit = isAdminOrPM || isClaimedByMe || isUnassigned;
+  const canEdit = isAdminOrPM || isClaimedByMe;
   const canDelete = isAdminOrPM || isClaimedByMe || isCreatedByMe;
 
   const updatedTime = record.updated || record.created;
@@ -228,31 +228,33 @@ export default function RecordCard({
           {canEdit ? (
             <button
               type="button"
-              className="card-action-icon edit-btn"
+              className="card-action-btn edit-btn primary-edit-btn"
               onClick={() => onEdit(record)}
-              title="Edit full site details"
+              title="Edit site details & technical parameters"
             >
-              ✏️ Edit
+              <span className="btn-icon">✏️</span>
+              <span className="btn-text">Edit</span>
             </button>
           ) : (
             <button
               type="button"
-              className="card-action-icon edit-disabled"
+              className="card-action-btn edit-disabled"
               disabled
-              title={`Claimed by ${record.claimedByName || record.claimedBy}. Request handover to edit.`}
+              title={isUnassigned ? "Unassigned site. Click 'Take / Claim Site' first to edit." : `Claimed by ${record.claimedByName || record.claimedBy}. Request handover to edit.`}
             >
-              🔒 Locked
+              <span className="btn-icon">🔒</span>
+              <span className="btn-text">Locked</span>
             </button>
           )}
 
           {canDelete && (
             <button
               type="button"
-              className="card-action-icon delete-btn"
+              className="card-action-btn delete-btn"
               onClick={() => onDelete(record)}
               title="Delete site record"
             >
-              🗑️
+              <span className="btn-icon">🗑️</span>
             </button>
           )}
 
@@ -376,6 +378,28 @@ export default function RecordCard({
       {/* FULL EXPANDED TECHNICAL DETAILS (Visible when expanded) */}
       {isExpanded && (
         <div className="site-expanded-details">
+          {/* Top Quick Actions Bar inside full technical description */}
+          <div className="expanded-top-action-bar">
+            <div className="expanded-title-area">
+              <span className="expanded-bar-icon">📋</span>
+              <span className="expanded-bar-heading">Full Technical Description & Parameters</span>
+            </div>
+            {canEdit ? (
+              <button
+                type="button"
+                className="full-spec-edit-btn"
+                onClick={() => onEdit(record)}
+                title="Edit this site's technical parameters"
+              >
+                ✏️ Edit Specifications
+              </button>
+            ) : (
+              <span className="specs-locked-pill">
+                🔒 Locked ({record.claimedByName || record.claimedBy || 'Unassigned'})
+              </span>
+            )}
+          </div>
+
           {/* Hardware & Physical Details */}
           <div className="site-section-panel hardware-panel">
             <div className="panel-header-sub">
@@ -602,6 +626,16 @@ export default function RecordCard({
           <div className="site-card-footer">
             <span className="last-sync-meta">Updated: {formattedDate}</span>
             <div className="footer-actions">
+              {canEdit && (
+                <button
+                  type="button"
+                  className="card-text-action footer-edit-action"
+                  onClick={() => onEdit(record)}
+                  title="Edit full site specifications"
+                >
+                  ✏️ Edit Site Specifications
+                </button>
+              )}
               {onExport && (
                 <button
                   type="button"

@@ -272,10 +272,15 @@ app.put('/api/records/:id', authMiddleware, async (req, res) => {
     const role = (req.user?.role || '').toLowerCase();
     const uname = (req.user?.username || '').toLowerCase();
     const isOwner = (existing.claimedBy || '').toLowerCase() === uname;
-    const isUnassigned = !existing.claimedBy;
-    const canEdit = isOwner || isUnassigned || role === 'admin' || role === 'pm';
+    const isAdminOrPM = role === 'admin' || role === 'pm' || uname.includes('admin');
+    const canEdit = isOwner || isAdminOrPM;
 
     if (!canEdit) {
+      if (!existing.claimedBy) {
+        return res.status(403).json({
+          error: 'This site is unassigned. Please click "Take / Claim Site" first to assign it to yourself before editing.'
+        });
+      }
       return res.status(403).json({
         error: `This site is owned by ${existing.claimedByName || existing.claimedBy}. Only the assigned NOC, PM, or Admin can edit it. You can click "Request Transfer" to ask for site handover.`
       });
@@ -301,10 +306,15 @@ app.patch('/api/records/:id/status', authMiddleware, async (req, res) => {
     const role = (req.user?.role || '').toLowerCase();
     const uname = (req.user?.username || '').toLowerCase();
     const isOwner = (existing.claimedBy || '').toLowerCase() === uname;
-    const isUnassigned = !existing.claimedBy;
-    const canEdit = isOwner || isUnassigned || role === 'admin' || role === 'pm';
+    const isAdminOrPM = role === 'admin' || role === 'pm' || uname.includes('admin');
+    const canEdit = isOwner || isAdminOrPM;
 
     if (!canEdit) {
+      if (!existing.claimedBy) {
+        return res.status(403).json({
+          error: 'This site is unassigned. Please click "Take / Claim Site" first to assign it to yourself before updating status.'
+        });
+      }
       return res.status(403).json({
         error: `Only the assigned NOC (${existing.claimedByName || existing.claimedBy}), PM, or Admin can update site status.`
       });
