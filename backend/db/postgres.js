@@ -182,9 +182,16 @@ function formatRecordRow(row) {
     primaryLanIp: row.primary_lan_ip || '',
     lanIpPrefix: row.lan_ip_prefix || '',
     primaryLanGateway: row.primary_lan_gateway || '',
-    secondaryLanIps: Array.isArray(row.secondary_lan_ips)
+    lanGateway: row.primary_lan_gateway || '',
+    secondaryLanIps: (Array.isArray(row.secondary_lan_ips)
       ? row.secondary_lan_ips
-      : (typeof row.secondary_lan_ips === 'string' ? JSON.parse(row.secondary_lan_ips || '[]') : []),
+      : (typeof row.secondary_lan_ips === 'string' ? JSON.parse(row.secondary_lan_ips || '[]') : [])
+    ).map(s => ({
+      gateway: s.gateway || s.ip || '',
+      ip: s.gateway || s.ip || '',
+      prefix: s.prefix || '',
+      note: s.note || ''
+    })),
     atmIp: row.atm_ip || '',
     atmGateway: row.atm_gateway || '',
     isDhcp: row.is_dhcp || 'No',
@@ -877,7 +884,14 @@ const db = {
     const authorName = user.name || author;
     const newId = generateId('site');
 
-    let secondaryIps = Array.isArray(data.secondaryLanIps) ? data.secondaryLanIps.slice(0, 3) : [];
+    let secondaryIps = Array.isArray(data.secondaryLanIps)
+      ? data.secondaryLanIps.slice(0, 3).map(s => ({
+          gateway: s.gateway || s.ip || '',
+          ip: s.gateway || s.ip || '',
+          prefix: s.prefix || '',
+          note: s.note || ''
+        }))
+      : [];
     const role = (user.role || '').toLowerCase();
     const isPMRole = role === 'pm' || role === 'admin' || author.toLowerCase().includes('admin');
     const explicitlyUnassigned = data.isUnassigned === true || data.claimedBy === '' || data.claimedBy === 'unassigned';
@@ -1028,7 +1042,14 @@ const db = {
 
     let secondaryIps = undefined;
     if (updates.secondaryLanIps !== undefined) {
-      secondaryIps = Array.isArray(updates.secondaryLanIps) ? updates.secondaryLanIps.slice(0, 3) : [];
+      secondaryIps = Array.isArray(updates.secondaryLanIps)
+        ? updates.secondaryLanIps.slice(0, 3).map(s => ({
+            gateway: s.gateway || s.ip || '',
+            ip: s.gateway || s.ip || '',
+            prefix: s.prefix || '',
+            note: s.note || ''
+          }))
+        : [];
     }
 
     if (p && isInitialized) {

@@ -313,10 +313,10 @@ export default function RecordCard({
           </span>
         </div>
 
-        {record.primaryLanIp && (
+        {(record.primaryLanGateway || record.lanGateway || record.primaryLanIp) && (
           <div className="compact-field">
-            <span className="compact-lbl">LAN:</span>
-            <code>{record.primaryLanIp} {record.lanIpPrefix || ''}</code>
+            <span className="compact-lbl">Gateway:</span>
+            <code>{record.primaryLanGateway || record.lanGateway || record.primaryLanIp} {record.lanIpPrefix || ''}</code>
           </div>
         )}
 
@@ -440,7 +440,7 @@ export default function RecordCard({
           {/* LAN & VLAN Routing */}
           <div className="site-section-panel lan-panel">
             <div className="panel-header-sub">
-              <span>LAN Network & Subnets</span>
+              <span>LAN Gateway & Subnets</span>
               {record.isDhcp === 'Yes' && (
                 <span className="dhcp-pill-badge">📶 DHCP Enabled</span>
               )}
@@ -448,12 +448,12 @@ export default function RecordCard({
 
             <div className="lan-info-grid">
               <div className="lan-col">
-                <span className="lan-lbl">Primary LAN IP:</span>
-                <code className="lan-val">{record.primaryLanIp ? `${record.primaryLanIp} ${record.lanIpPrefix || ''}` : '—'}</code>
+                <span className="lan-lbl">LAN Gateway:</span>
+                <code className="lan-val">{(record.primaryLanGateway || record.lanGateway || record.primaryLanIp) || '—'}</code>
               </div>
               <div className="lan-col">
-                <span className="lan-lbl">Primary Gateway:</span>
-                <code className="lan-val">{record.primaryLanGateway || '—'}</code>
+                <span className="lan-lbl">Prefix / Subnet:</span>
+                <code className="lan-val">{record.lanIpPrefix || '—'}</code>
               </div>
               <div className="lan-col">
                 <span className="lan-lbl">VLAN Configured:</span>
@@ -473,14 +473,14 @@ export default function RecordCard({
               )}
             </div>
 
-            {/* Dynamic Secondary LAN IPs */}
+            {/* Dynamic Secondary LAN Gateways */}
             {record.secondaryLanIps && record.secondaryLanIps.length > 0 && (
               <div className="secondary-lans-block">
-                <span className="secondary-lan-title">Secondary LAN IPs ({record.secondaryLanIps.length}/3):</span>
+                <span className="secondary-lan-title">Secondary LAN Gateways ({record.secondaryLanIps.length}/3):</span>
                 <div className="chips-flow-row">
                   {record.secondaryLanIps.map((sec, idx) => (
                     <div key={idx} className="secondary-ip-tag">
-                      <strong>{sec.ip} {sec.prefix || ''}</strong>
+                      <strong>{sec.gateway || sec.ip} {sec.prefix || ''}</strong>
                       {sec.note && <span className="sec-note">({sec.note})</span>}
                     </div>
                   ))}

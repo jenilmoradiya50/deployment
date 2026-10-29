@@ -23,7 +23,16 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
         airtelIs4G: recordToEdit.airtelIs4G || 'No',
         airtelLoopbackIp: recordToEdit.airtelLoopbackIp || ''
       });
-      setSecondaryIps(Array.isArray(recordToEdit.secondaryLanIps) ? [...recordToEdit.secondaryLanIps] : []);
+      setSecondaryIps(
+        Array.isArray(recordToEdit.secondaryLanIps)
+          ? recordToEdit.secondaryLanIps.map(s => ({
+              gateway: s.gateway || s.ip || '',
+              ip: s.gateway || s.ip || '',
+              prefix: s.prefix || '',
+              note: s.note || ''
+            }))
+          : []
+      );
       setIsQuickAdd(false);
     } else {
       const userRole = (currentUser?.role || '').toLowerCase();
@@ -68,16 +77,18 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
     if (errorMsg) setErrorMsg('');
   };
 
-  // Secondary LAN IP handlers (Limit: 3)
+  // Secondary LAN Gateway handlers (Limit: 3)
   const handleAddSecondaryIp = () => {
     if (secondaryIps.length >= 3) return;
-    setSecondaryIps(prev => [...prev, { ip: '', prefix: '', note: '' }]);
+    setSecondaryIps(prev => [...prev, { gateway: '', ip: '', prefix: '', note: '' }]);
   };
 
   const handleUpdateSecondaryIp = (index, key, value) => {
     setSecondaryIps(prev => {
       const copy = [...prev];
       copy[index] = { ...copy[index], [key]: value };
+      if (key === 'gateway') copy[index].ip = value;
+      if (key === 'ip') copy[index].gateway = value;
       return copy;
     });
   };
@@ -146,7 +157,16 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
         kind: currentKind,
         deploymentStatus: status,
         working,
-        secondaryLanIps: secondaryIps.filter(s => s.ip && s.ip.trim() !== '')
+        primaryLanGateway: formData.primaryLanGateway || formData.lanGateway || '',
+        lanGateway: formData.primaryLanGateway || formData.lanGateway || '',
+        secondaryLanIps: secondaryIps
+          .filter(s => (s.gateway || s.ip) && (s.gateway || s.ip).trim() !== '')
+          .map(s => ({
+            gateway: (s.gateway || s.ip).trim(),
+            ip: (s.gateway || s.ip).trim(),
+            prefix: (s.prefix || '').trim(),
+            note: (s.note || '').trim()
+          }))
       });
     } catch (err) {
       setErrorMsg(err.message || 'Error saving record');
@@ -678,11 +698,11 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
                 </div>
               </div>
 
-              {/* 5. LAN NETWORK & SECONDARY IPS */}
+              {/* 5. LAN NETWORK & SECONDARY GATEWAYS */}
               <div className="form-section-card">
                 <div className="form-section-header">
                   <span className="sec-icon">🌐</span>
-                  <h4>Primary LAN & DHCP Configuration</h4>
+                  <h4>Primary LAN Gateway & DHCP Configuration</h4>
                 </div>
                 <div className="form-fields-grid">
                   {/* DHCP Checkbox */}
@@ -695,26 +715,29 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
                       />
                       <span><strong>☑️ Branch Uses DHCP (Automatic IP Assignment)</strong></span>
                     </label>
-                    <span className="sub-hint">Check if this branch obtains its primary IP via DHCP rather than static IP</span>
+                    <span className="sub-hint">Check if this branch obtains its primary network via DHCP rather than static configuration</span>
                   </div>
 
                   <div className="modal-form-field">
-                    <label htmlFor="f_primaryLanIp" className="field-title">
-                      Primary LAN IP
+                    <label htmlFor="f_primaryLanGateway" className="field-title">
+                      LAN Gateway
                     </label>
                     <input
-                      id="f_primaryLanIp"
+                      id="f_primaryLanGateway"
                       type="text"
                       className="field-input ip-code"
-                      placeholder="e.g. 10.24.120.1"
-                      value={formData.primaryLanIp || formData.lanIp || ''}
-                      onChange={(e) => handleChange('primaryLanIp', e.target.value)}
+                      placeholder="e.g. 10.24.120.254"
+                      value={formData.primaryLanGateway || formData.lanGateway || ''}
+                      onChange={(e) => {
+                        handleChange('primaryLanGateway', e.target.value);
+                        handleChange('lanGateway', e.target.value);
+                      }}
                     />
                   </div>
 
                   <div className="modal-form-field">
                     <label htmlFor="f_lanIpPrefix" className="field-title">
-                      LAN IP Prefix / Subnet
+                      Prefix / Subnet
                     </label>
                     <input
                       id="f_lanIpPrefix"
@@ -725,28 +748,14 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
                       onChange={(e) => handleChange('lanIpPrefix', e.target.value)}
                     />
                   </div>
-
-                  <div className="modal-form-field full">
-                    <label htmlFor="f_primaryLanGateway" className="field-title">
-                      Primary LAN Gateway
-                    </label>
-                    <input
-                      id="f_primaryLanGateway"
-                      type="text"
-                      className="field-input ip-code"
-                      placeholder="e.g. 10.24.120.254"
-                      value={formData.primaryLanGateway || formData.lanGateway || ''}
-                      onChange={(e) => handleChange('primaryLanGateway', e.target.value)}
-                    />
-                  </div>
                 </div>
 
-                {/* Dynamic Secondary LAN IPs (Limit 3) */}
+                {/* Dynamic Secondary LAN Gateways (Limit 3) */}
                 <div className="secondary-ips-container">
                   <div className="sec-header-row">
                     <div>
-                      <h5>Secondary LAN IPs ({secondaryIps.length}/3)</h5>
-                      <p className="sub-hint">Add additional LAN subnets or interfaces (Max 3 sections)</p>
+                      <h5>Secondary LAN Gateways ({secondaryIps.length}/3)</h5>
+                      <p className="sub-hint">Add additional LAN gateway interfaces (Max 3 sections)</p>
                     </div>
                     <button
                       type="button"
@@ -754,14 +763,14 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
                       onClick={handleAddSecondaryIp}
                       disabled={secondaryIps.length >= 3}
                     >
-                      {secondaryIps.length >= 3 ? '(Limit 3 Reached)' : '＋ Add Secondary LAN IP'}
+                      {secondaryIps.length >= 3 ? '(Limit 3 Reached)' : '＋ Add Secondary LAN Gateway'}
                     </button>
                   </div>
 
                   {secondaryIps.map((sec, idx) => (
                     <div key={idx} className="secondary-ip-box">
                       <div className="sec-box-header">
-                        <strong>Secondary LAN Section #{idx + 1}</strong>
+                        <strong>Secondary LAN Gateway #{idx + 1}</strong>
                         <button
                           type="button"
                           className="remove-sec-btn"
@@ -772,13 +781,13 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
                       </div>
                       <div className="form-fields-grid">
                         <div className="modal-form-field">
-                          <label className="field-title">Secondary IP</label>
+                          <label className="field-title">Secondary Gateway</label>
                           <input
                             type="text"
                             className="field-input ip-code"
                             placeholder="e.g. 10.24.120.60"
-                            value={sec.ip || ''}
-                            onChange={(e) => handleUpdateSecondaryIp(idx, 'ip', e.target.value)}
+                            value={sec.gateway || sec.ip || ''}
+                            onChange={(e) => handleUpdateSecondaryIp(idx, 'gateway', e.target.value)}
                           />
                         </div>
                         <div className="modal-form-field">
