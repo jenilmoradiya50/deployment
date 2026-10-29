@@ -314,13 +314,31 @@ export default function App() {
     }
   };
 
+  // Record Auto-Save Handler (Instant Background Persistence)
+  const handleAutoSaveRecord = async (formData) => {
+    try {
+      if (formData.id) {
+        const updated = await api.updateRecord(formData.id, formData);
+        setRecords(prev => prev.map(r => (r.id === updated.id ? updated : r)));
+        return updated;
+      } else {
+        const created = await api.createRecord(formData);
+        setRecords(prev => [created, ...prev]);
+        return created;
+      }
+    } catch (err) {
+      console.warn('Auto-save error:', err.message);
+      throw err;
+    }
+  };
+
   // Record CRUD Handlers
   const handleSaveRecord = async (formData) => {
     try {
       if (formData.id) {
         const updated = await api.updateRecord(formData.id, formData);
         setRecords(prev => prev.map(r => (r.id === updated.id ? updated : r)));
-        showToast(`Updated ${formData.dpCode || formData.atmId || 'site'} in database!`);
+        showToast(`Saved ${formData.dpCode || formData.atmId || 'site'} to database!`);
       } else {
         const created = await api.createRecord(formData);
         setRecords(prev => [created, ...prev]);
@@ -706,6 +724,7 @@ export default function App() {
           users={users}
           records={records}
           onSave={handleSaveRecord}
+          onAutoSave={handleAutoSaveRecord}
           onClose={() => {
             setIsFormOpen(false);
             setRecordToEdit(null);

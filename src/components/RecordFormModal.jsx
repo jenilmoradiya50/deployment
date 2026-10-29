@@ -1,6 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
-export default function RecordFormModal({ kind = 'Branch', recordToEdit, currentUser, users = [], records = [], onSave, onClose }) {
+export default function RecordFormModal({
+  kind = 'Branch',
+  recordToEdit,
+  currentUser,
+  users = [],
+  records = [],
+  onSave,
+  onAutoSave,
+  onClose
+}) {
   const isEditing = Boolean(recordToEdit && recordToEdit.id);
   const [isQuickAdd, setIsQuickAdd] = useState(!isEditing);
   const [formData, setFormData] = useState({});
@@ -8,8 +17,26 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
   const [errorMsg, setErrorMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Auto-Save state & refs
+  const [autoSaveStatus, setAutoSaveStatus] = useState('idle'); // 'idle' | 'saving' | 'saved' | 'error'
+  const [lastSavedTime, setLastSavedTime] = useState('');
+  const autoSaveTimerRef = useRef(null);
+  const currentRecordIdRef = useRef(recordToEdit?.id || null);
+
   const currentKind = formData.kind || (recordToEdit ? recordToEdit.kind : (kind === 'All' ? 'Branch' : kind));
   const isBranch = currentKind === 'Branch';
+
+  useEffect(() => {
+    currentRecordIdRef.current = recordToEdit?.id || null;
+  }, [recordToEdit?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (recordToEdit) {
@@ -81,7 +108,89 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
     }
   }, [recordToEdit, kind, currentUser]);
 
-  const handleChange = (fieldId, val) => {
+  // Construct complete payload for saving
+  const buildPayload = (currentForm = formData, currentSecIps = secondaryIps) => {
+    const status = currentForm.deploymentStatus || 'Pending';
+    const working = status === 'Completed' ? 'Yes' : (status === 'Failed' ? 'No' : (currentForm.working || 'No'));
+
+    return {
+      ...currentForm,
+      id: currentRecordIdRef.current || currentForm.id,
+      kind: currentForm.kind || (isBranch ? 'Branch' : 'ATM'),
+      deploymentStatus: status,
+      working,
+      bsnlPresent: currentForm.bsnlPresent === 'Yes' ? 'Yes' : 'No',
+      jioPresent: currentForm.jioPresent === 'Yes' ? 'Yes' : 'No',
+      airtelPresent: currentForm.airtelPresent === 'Yes' ? 'Yes' : 'No',
+      primaryLanGateway: currentForm.primaryLanGateway || currentForm.lanGateway || '',
+      lanGateway: currentForm.primaryLanGateway || currentForm.lanGateway || '',
+      secondaryLanIps: currentSecIps
+        .filter(s => (s.gateway || s.ip) && (s.gateway || s.ip).trim() !== '')
+        .map(s => ({
+          gateway: (s.gateway || s.ip).trim(),
+          ip: (s.gateway || s.ip).trim(),
+          prefix: (s.prefix || '').trim(),
+          note: (s.note || '').trim()
+        }))
+    };
+  };
+
+  // Perform background auto-save directly to PostgreSQL
+  const executeAutoSave = async (payloadToSave) => {
+    // If not yet saved in database, ensure required identification is present
+    if (!payloadToSave.id) {
+      if (isBranch && (!payloadToSave.dpCode || !payloadToSave.dpCode.trim())) return;
+      if (!isBranch && (!payloadToSave.atmId || !payloadToSave.atmId.trim() || !payloadToSave.dpCode || !payloadToSave.dpCode.trim())) return;
+
+      // Duplicate check before auto-creating
+      if (isBranch) {
+        const cleanDp = (payloadToSave.dpCode || '').trim().toLowerCase();
+        if (records.some(r => (r.kind || 'Branch') === 'Branch' && (r.dpCode || '').trim().toLowerCase() === cleanDp)) {
+          return;
+        }
+      } else {
+        const cleanAtm = (payloadToSave.atmId || '').trim().toLowerCase();
+        if (records.some(r => r.kind === 'ATM' && (r.atmId || '').trim().toLowerCase() === cleanAtm)) {
+          return;
+        }
+      }
+    }
+
+    setAutoSaveStatus('saving');
+    try {
+      if (onAutoSave) {
+        const saved = await onAutoSave(payloadToSave);
+        if (saved && saved.id) {
+          currentRecordIdRef.current = saved.id;
+          setFormData(prev => ({ ...prev, id: saved.id }));
+        }
+      }
+      setAutoSaveStatus('saved');
+      const now = new Date();
+      setLastSavedTime(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    } catch (err) {
+      console.warn('Auto-save error:', err.message);
+      setAutoSaveStatus('error');
+    }
+  };
+
+  // Schedule auto-save: debounced (500ms) for typing, immediate for buttons/clicks
+  const scheduleAutoSave = (updatedForm, updatedSecIps = secondaryIps, immediate = false) => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+    const payload = buildPayload(updatedForm, updatedSecIps);
+    if (immediate) {
+      executeAutoSave(payload);
+    } else {
+      setAutoSaveStatus('saving');
+      autoSaveTimerRef.current = setTimeout(() => {
+        executeAutoSave(payload);
+      }, 500);
+    }
+  };
+
+  const handleChange = (fieldId, val, immediate = false) => {
     setFormData(prev => {
       const next = { ...prev, [fieldId]: val };
 
@@ -106,6 +215,9 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
         next.airtelPresent = (aIp.trim() !== '' || aGw.trim() !== '' || aLoop.trim() !== '' || is4G === 'Yes') ? 'Yes' : 'No';
       }
 
+      // Automatically persist to database
+      scheduleAutoSave(next, secondaryIps, immediate);
+
       return next;
     });
     if (errorMsg) setErrorMsg('');
@@ -114,7 +226,9 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
   // Secondary LAN Gateway handlers (Limit: 3)
   const handleAddSecondaryIp = () => {
     if (secondaryIps.length >= 3) return;
-    setSecondaryIps(prev => [...prev, { gateway: '', ip: '', prefix: '', note: '' }]);
+    const nextSecIps = [...secondaryIps, { gateway: '', ip: '', prefix: '', note: '' }];
+    setSecondaryIps(nextSecIps);
+    scheduleAutoSave(formData, nextSecIps, true);
   };
 
   const handleUpdateSecondaryIp = (index, key, value) => {
@@ -123,16 +237,33 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
       copy[index] = { ...copy[index], [key]: value };
       if (key === 'gateway') copy[index].ip = value;
       if (key === 'ip') copy[index].gateway = value;
+      scheduleAutoSave(formData, copy, false);
       return copy;
     });
   };
 
   const handleRemoveSecondaryIp = (index) => {
-    setSecondaryIps(prev => prev.filter((_, i) => i !== index));
+    const nextSecIps = secondaryIps.filter((_, i) => i !== index);
+    setSecondaryIps(nextSecIps);
+    scheduleAutoSave(formData, nextSecIps, true);
+  };
+
+  const handleCloseModal = () => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      const payload = buildPayload(formData, secondaryIps);
+      if (payload.id && onAutoSave) {
+        onAutoSave(payload);
+      }
+    }
+    onClose();
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
 
     if (isBranch && (!formData.dpCode || !formData.dpCode.trim())) {
       setErrorMsg('Branch DP code is required.');
@@ -153,55 +284,38 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
       }
     }
 
-    // Stop duplicate entries (Branch DP Code or ATM ID)
-    if (isBranch) {
-      const cleanDp = (formData.dpCode || '').trim().toLowerCase();
-      const duplicateBranch = records.find(r => 
-        (r.kind || 'Branch') === 'Branch' &&
-        (r.dpCode || '').trim().toLowerCase() === cleanDp &&
-        r.id !== recordToEdit?.id
-      );
-      if (duplicateBranch) {
-        setErrorMsg(`Branch DP Code "${formData.dpCode.trim()}" already exists in database (Site: ${duplicateBranch.dpCode}). Duplicate branch entries are not allowed.`);
-        document.getElementById('f_dpCode')?.focus();
-        return;
-      }
-    } else {
-      const cleanAtm = (formData.atmId || '').trim().toLowerCase();
-      const duplicateAtm = records.find(r => 
-        r.kind === 'ATM' &&
-        (r.atmId || '').trim().toLowerCase() === cleanAtm &&
-        r.id !== recordToEdit?.id
-      );
-      if (duplicateAtm) {
-        setErrorMsg(`ATM ID "${formData.atmId.trim()}" already exists in database (Site: ${duplicateAtm.atmId}). Duplicate ATM entries are not allowed.`);
-        document.getElementById('f_atmId')?.focus();
-        return;
+    // Stop duplicate entries if new record
+    if (!currentRecordIdRef.current && !formData.id) {
+      if (isBranch) {
+        const cleanDp = (formData.dpCode || '').trim().toLowerCase();
+        const duplicateBranch = records.find(r => 
+          (r.kind || 'Branch') === 'Branch' &&
+          (r.dpCode || '').trim().toLowerCase() === cleanDp &&
+          r.id !== recordToEdit?.id
+        );
+        if (duplicateBranch) {
+          setErrorMsg(`Branch DP Code "${formData.dpCode.trim()}" already exists in database (Site: ${duplicateBranch.dpCode}). Duplicate branch entries are not allowed.`);
+          document.getElementById('f_dpCode')?.focus();
+          return;
+        }
+      } else {
+        const cleanAtm = (formData.atmId || '').trim().toLowerCase();
+        const duplicateAtm = records.find(r => 
+          r.kind === 'ATM' &&
+          (r.atmId || '').trim().toLowerCase() === cleanAtm &&
+          r.id !== recordToEdit?.id
+        );
+        if (duplicateAtm) {
+          setErrorMsg(`ATM ID "${formData.atmId.trim()}" already exists in database (Site: ${duplicateAtm.atmId}). Duplicate ATM entries are not allowed.`);
+          document.getElementById('f_atmId')?.focus();
+          return;
+        }
       }
     }
 
     setIsSubmitting(true);
     try {
-      // Sync working with deploymentStatus
-      const status = formData.deploymentStatus || 'Pending';
-      const working = status === 'Completed' ? 'Yes' : (status === 'Failed' ? 'No' : 'No');
-
-      await onSave({
-        ...formData,
-        kind: currentKind,
-        deploymentStatus: status,
-        working,
-        primaryLanGateway: formData.primaryLanGateway || formData.lanGateway || '',
-        lanGateway: formData.primaryLanGateway || formData.lanGateway || '',
-        secondaryLanIps: secondaryIps
-          .filter(s => (s.gateway || s.ip) && (s.gateway || s.ip).trim() !== '')
-          .map(s => ({
-            gateway: (s.gateway || s.ip).trim(),
-            ip: (s.gateway || s.ip).trim(),
-            prefix: (s.prefix || '').trim(),
-            note: (s.note || '').trim()
-          }))
-      });
+      await onSave(buildPayload(formData, secondaryIps));
     } catch (err) {
       setErrorMsg(err.message || 'Error saving record');
       setIsSubmitting(false);
@@ -226,7 +340,7 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
                   name={fieldId}
                   value={opt}
                   checked={isChecked}
-                  onChange={() => handleChange(fieldId, opt)}
+                  onChange={() => handleChange(fieldId, opt, true)}
                 />
                 <span>{opt}</span>
               </label>
@@ -253,12 +367,31 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
                   ? `Register New ${currentKind} (Move to Pending)`
                   : `Full ${currentKind} Deployment Setup`}
               </h2>
+              {/* Live Auto-Save Status Badge */}
+              <div className="auto-save-indicator">
+                {autoSaveStatus === 'saving' && (
+                  <span className="auto-save-badge saving">
+                    <span className="auto-save-spinner"></span> Auto-saving...
+                  </span>
+                )}
+                {autoSaveStatus === 'saved' && (
+                  <span className="auto-save-badge saved">
+                    ✓ Saved to database {lastSavedTime ? `(${lastSavedTime})` : ''}
+                  </span>
+                )}
+                {autoSaveStatus === 'error' && (
+                  <span className="auto-save-badge error">
+                    ⚠️ Save error — retrying
+                  </span>
+                )}
+              </div>
             </div>
             <button
               type="button"
               className="modal-close-button"
-              onClick={onClose}
+              onClick={handleCloseModal}
               aria-label="Close dialog"
+              title="Close (all changes are saved)"
             >
               ✕ Close
             </button>
@@ -1061,7 +1194,7 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
                 <button
                   type="button"
                   className="cancel-btn"
-                  onClick={onClose}
+                  onClick={handleCloseModal}
                   disabled={isSubmitting}
                 >
                   Cancel
@@ -1073,20 +1206,20 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
                   type="submit"
                   className="save-btn"
                   disabled={isSubmitting}
+                  title="Close and view record on dashboard (changes are auto-saved)"
                 >
                   {isSubmitting
-                    ? 'Saving to Database...'
-                    : isEditing
-                    ? 'Save Changes'
-                    : `Create ${currentKind} Record`}
+                    ? 'Saving...'
+                    : '✓ Done (Close)'}
                 </button>
                 <button
                   type="button"
                   className="cancel-btn"
-                  onClick={onClose}
+                  onClick={handleCloseModal}
                   disabled={isSubmitting}
+                  title="Close form (all changes are saved)"
                 >
-                  Cancel
+                  Close
                 </button>
               </>
             )}
