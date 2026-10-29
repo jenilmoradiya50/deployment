@@ -631,22 +631,6 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
                       onChange={(e) => handleChange('feNumber', e.target.value)}
                     />
                   </div>
-
-                  {renderRadioPill('uatSubmitted', 'UAT Form Submitted?', ['Yes', 'No'])}
-
-                  <div className="modal-form-field">
-                    <label htmlFor="f_uatFormNo" className="field-title">
-                      UAT Form Number / Reference
-                    </label>
-                    <input
-                      id="f_uatFormNo"
-                      type="text"
-                      className="field-input ip-code"
-                      placeholder="e.g. UAT-CN-4102-01"
-                      value={formData.uatFormNo || ''}
-                      onChange={(e) => handleChange('uatFormNo', e.target.value)}
-                    />
-                  </div>
                 </div>
               </div>
 
@@ -1040,6 +1024,7 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
                   {renderRadioPill('dcMail', 'Mail from DC', ['Received', 'Not received'])}
                   {renderRadioPill('drcMail', 'Mail from DRC', ['Received', 'Not received'])}
                   {renderRadioPill('cablesConnected', 'ISP & LAN Cables Connected?', ['Connected', 'Not connected'])}
+                  {renderRadioPill('uatSubmitted', 'UAT Form Given?', ['Yes', 'No'])}
                   {renderRadioPill('working', 'Is Site Operational & Working?', ['Yes', 'No'])}
                 </div>
               </div>

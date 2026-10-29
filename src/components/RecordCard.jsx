@@ -424,16 +424,6 @@ export default function RecordCard({
                 <span className="hw-lbl">Old Router S/N:</span>
                 <code className="hw-val">{record.oldDeviceSerial || '—'}</code>
               </div>
-              <div className="hw-col">
-                <span className="hw-lbl">UAT Form:</span>
-                <span className="hw-val">
-                  {record.uatSubmitted === 'Yes' ? (
-                    <strong className="uat-tag-ok">✓ Submitted {record.uatFormNo ? `(${record.uatFormNo})` : ''}</strong>
-                  ) : (
-                    <span className="uat-tag-pending">Pending</span>
-                  )}
-                </span>
-              </div>
             </div>
           </div>
 
@@ -599,6 +589,9 @@ export default function RecordCard({
               </span>
               <span className={`check-chip ${record.cablesConnected === 'Connected' ? 'done' : 'pending'}`}>
                 Cables: {record.cablesConnected || 'Not connected'}
+              </span>
+              <span className={`check-chip ${record.uatSubmitted === 'Yes' ? 'done' : 'pending'}`}>
+                UAT Form: {record.uatSubmitted === 'Yes' ? 'Given' : 'Pending'}
               </span>
               <span className={`check-chip ${record.mailSent === 'Yes' ? 'done' : 'pending'}`}>
                 Handover Mail: {record.mailSent || 'No'}
