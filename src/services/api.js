@@ -1,16 +1,33 @@
 const API_BASE = '/api';
 const TOKEN_KEY = 'canara_sdwan_token';
 const USER_KEY = 'canara_sdwan_user';
+const LOGIN_TIME_KEY = 'canara_sdwan_login_time';
+const SESSION_MAX_AGE_MS = 8 * 60 * 60 * 1000; // 8 hours session limit
 
 function getStoredToken() {
-  return localStorage.getItem(TOKEN_KEY) || '';
+  const token = localStorage.getItem(TOKEN_KEY) || '';
+  if (!token) return '';
+
+  const loginTimeStr = localStorage.getItem(LOGIN_TIME_KEY);
+  if (loginTimeStr) {
+    const loginTime = parseInt(loginTimeStr, 10);
+    if (Date.now() - loginTime > SESSION_MAX_AGE_MS) {
+      console.warn('⚠️ [Session] 8-hour login session has expired. Clearing credentials.');
+      setStoredToken(null);
+      setStoredUser(null);
+      return '';
+    }
+  }
+  return token;
 }
 
 function setStoredToken(token) {
   if (token) {
     localStorage.setItem(TOKEN_KEY, token);
+    localStorage.setItem(LOGIN_TIME_KEY, String(Date.now()));
   } else {
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(LOGIN_TIME_KEY);
   }
 }
 

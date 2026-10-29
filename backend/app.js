@@ -69,7 +69,7 @@ app.post('/api/auth/login', async (req, res) => {
         phone: user.phone
       },
       JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: '8h' }
     );
 
     res.json({
@@ -257,6 +257,16 @@ app.post('/api/records', authMiddleware, async (req, res) => {
       }
     }
 
+    // Check for duplicate Branch DP Code or ATM ID
+    const dupCheck = await db.checkDuplicateRecord({
+      kind,
+      dpCode: data.dpCode,
+      atmId: data.atmId
+    });
+    if (dupCheck.isDuplicate) {
+      return res.status(400).json({ error: dupCheck.message });
+    }
+
     const created = await db.createRecord(data, req.user);
     res.status(201).json(created);
   } catch (err) {
@@ -284,6 +294,21 @@ app.put('/api/records/:id', authMiddleware, async (req, res) => {
       return res.status(403).json({
         error: `This site is owned by ${existing.claimedByName || existing.claimedBy}. Only the assigned NOC, PM, or Admin can edit it. You can click "Request Transfer" to ask for site handover.`
       });
+    }
+
+    // Check for duplicate Branch DP Code or ATM ID against other records
+    const targetKind = req.body?.kind || existing.kind || 'Branch';
+    const targetDpCode = req.body?.dpCode !== undefined ? req.body.dpCode : existing.dpCode;
+    const targetAtmId = req.body?.atmId !== undefined ? req.body.atmId : existing.atmId;
+
+    const dupCheck = await db.checkDuplicateRecord({
+      kind: targetKind,
+      dpCode: targetDpCode,
+      atmId: targetAtmId,
+      excludeId: req.params.id
+    });
+    if (dupCheck.isDuplicate) {
+      return res.status(400).json({ error: dupCheck.message });
     }
 
     const updated = await db.updateRecord(req.params.id, req.body || {}, req.user);

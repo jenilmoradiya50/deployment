@@ -24,6 +24,7 @@ export default function App() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [ownershipFilter, setOwnershipFilter] = useState('all');
+  const [activeView, setActiveView] = useState('my-pending');
 
   // Modals state
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -112,6 +113,14 @@ export default function App() {
     }
   }, [currentUser, loadData, loadUsers]);
 
+  // Set default primary view based on role
+  useEffect(() => {
+    if (currentUser) {
+      const uRole = (currentUser.role || '').toLowerCase();
+      setActiveView(uRole === 'noc' ? 'my-pending' : 'all');
+    }
+  }, [currentUser?.username, currentUser?.role]);
+
   // Auth Handlers
   const handleLoginSuccess = async (username, password) => {
     const res = await api.login(username, password);
@@ -159,43 +168,98 @@ export default function App() {
     };
   }, [currentKindRecords]);
 
+  // View counts for Primary Navigation Tabs
+  const viewCounts = useMemo(() => {
+    const curUname = (currentUser?.username || '').toLowerCase();
+    let myPending = 0;
+    let completed = 0;
+    let unassignedPending = 0;
+
+    currentKindRecords.forEach(r => {
+      const recStatus = r.deploymentStatus || (r.working === 'Yes' ? 'Completed' : (r.working === 'No' ? 'Failed' : 'Pending'));
+      const isOwner = (r.claimedBy || '').toLowerCase() === curUname;
+      const isUnclaimed = !r.claimedBy || r.claimedBy.trim() === '';
+
+      if (isOwner && recStatus !== 'Completed') {
+        myPending++;
+      }
+
+      if (recStatus === 'Completed') {
+        if (isAdmin || isPM) {
+          completed++;
+        } else if (isOwner) {
+          completed++;
+        }
+      }
+
+      if (isUnclaimed && recStatus === 'Pending') {
+        unassignedPending++;
+      }
+    });
+
+    return {
+      myPending,
+      completed,
+      unassignedPending,
+      all: currentKindRecords.length
+    };
+  }, [currentKindRecords, currentUser, isAdmin, isPM]);
+
   // Filtered displayed records
   const displayedRecords = useMemo(() => {
     const q = search.trim().toLowerCase();
     const curUname = (currentUser?.username || '').toLowerCase();
 
     return currentKindRecords.filter(r => {
-      // Status Filter (All, Pending, Completed, On Hold, Failed)
+      const recStatus = r.deploymentStatus || (r.working === 'Yes' ? 'Completed' : (r.working === 'No' ? 'Failed' : 'Pending'));
+      const isOwner = (r.claimedBy || '').toLowerCase() === curUname;
+      const isUnclaimed = !r.claimedBy || r.claimedBy.trim() === '';
+
+      // If search query is entered, search across currentKindRecords regardless of active tab
+      if (q) {
+        const str = JSON.stringify(r).toLowerCase();
+        return str.includes(q);
+      }
+
+      // Tab View Filtering
+      if (activeView === 'my-pending') {
+        return isOwner && recStatus !== 'Completed';
+      }
+
+      if (activeView === 'completed') {
+        if (isAdmin || isPM) {
+          return recStatus === 'Completed';
+        }
+        return isOwner && recStatus === 'Completed';
+      }
+
+      if (activeView === 'unassigned') {
+        return isUnclaimed && recStatus === 'Pending';
+      }
+
+      // activeView === 'all': apply granular statusFilter and ownershipFilter
       if (statusFilter !== 'all') {
-        const recStatus = r.deploymentStatus || (r.working === 'Yes' ? 'Completed' : (r.working === 'No' ? 'Failed' : 'Pending'));
         if (statusFilter === 'pending' && recStatus !== 'Pending') return false;
         if (statusFilter === 'completed' && recStatus !== 'Completed') return false;
         if (statusFilter === 'onHold' && recStatus !== 'On Hold') return false;
         if (statusFilter === 'failed' && recStatus !== 'Failed') return false;
-        // Legacy fallback
         if (statusFilter === 'working' && r.working !== 'Yes') return false;
         if (statusFilter === 'notWorking' && r.working !== 'No') return false;
       }
 
       // Ownership Filter
       if (ownershipFilter === 'mine') {
-        if (!r.claimedBy || r.claimedBy.toLowerCase() !== curUname) return false;
+        if (!isOwner) return false;
       } else if (ownershipFilter === 'unassigned') {
-        if (r.claimedBy && r.claimedBy.trim() !== '') return false;
+        if (!isUnclaimed) return false;
       } else if (ownershipFilter.startsWith('user:')) {
         const targetUname = ownershipFilter.replace('user:', '').toLowerCase();
         if ((r.claimedBy || '').toLowerCase() !== targetUname) return false;
       }
 
-      // Search Query
-      if (q) {
-        const str = JSON.stringify(r).toLowerCase();
-        if (!str.includes(q)) return false;
-      }
-
       return true;
     });
-  }, [currentKindRecords, search, statusFilter, ownershipFilter, currentUser]);
+  }, [currentKindRecords, search, activeView, statusFilter, ownershipFilter, currentUser, isAdmin, isPM]);
 
   // Claim site
   const handleClaimSite = async (recordId) => {
@@ -324,6 +388,182 @@ export default function App() {
     showToast(`Exported ${listToExport.length} site deployments to Excel CSV`);
   };
 
+  // Render helper for feed content
+  const renderFeedContent = () => {
+    if (isLoading) {
+      return (
+        <div className="feed-loading-box">
+          <div className="feed-spinner"></div>
+          <span>Querying cloud PostgreSQL database...</span>
+        </div>
+      );
+    }
+
+    if (displayedRecords.length > 0) {
+      return (
+        <div className="sites-grid">
+          {displayedRecords.map(record => (
+            <RecordCard
+              key={record.id}
+              record={record}
+              currentUser={currentUser}
+              onClaim={handleClaimSite}
+              onStatusChange={handleStatusChange}
+              onRequestTransfer={handleRequestTransfer}
+              onAcceptTransfer={handleAcceptTransfer}
+              onRejectTransfer={handleRejectTransfer}
+              onEdit={(rec) => {
+                setRecordToEdit(rec);
+                setIsFormOpen(true);
+              }}
+              onDelete={(rec) => setRecordToDelete(rec)}
+              onExport={handleExportSingle}
+              onNotify={showToast}
+            />
+          ))}
+        </div>
+      );
+    }
+
+    // Empty state when searching
+    if (search.trim()) {
+      return (
+        <div className="feed-empty-state">
+          <div className="empty-badge-icon">🔍</div>
+          <h3>No matching deployments found</h3>
+          <p>No site records matched "{search.trim()}". Check the DP code, ATM ID, FE name, or IP address.</p>
+          <button
+            type="button"
+            className="reset-filters-btn"
+            onClick={() => setSearch('')}
+          >
+            Clear Search
+          </button>
+        </div>
+      );
+    }
+
+    // Empty state for My Pending Sites
+    if (activeView === 'my-pending') {
+      return (
+        <div className="feed-empty-state">
+          <div className="empty-badge-icon">📌</div>
+          <h3>No Pending Sites Assigned to You</h3>
+          <p>You have no active pending deployments right now. Check the Open Pool to claim available sites or add a new deployment.</p>
+          <div className="empty-actions">
+            <button
+              type="button"
+              className="claim-empty-btn"
+              onClick={() => setActiveView('unassigned')}
+            >
+              🌐 Open Pool ({viewCounts.unassignedPending} Available)
+            </button>
+            <button
+              type="button"
+              className="add-site-cta"
+              onClick={() => {
+                setRecordToEdit(null);
+                setIsFormOpen(true);
+              }}
+            >
+              ＋ Add Deployment
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // Empty state for Completed Sites
+    if (activeView === 'completed') {
+      return (
+        <div className="feed-empty-state">
+          <div className="empty-badge-icon">✅</div>
+          <h3>No Completed Sites Yet</h3>
+          <p>
+            {isAdmin || isPM
+              ? 'No sites in this category have been marked as Completed yet.'
+              : 'You have not marked any sites as Completed yet. Sites you complete will appear here.'}
+          </p>
+          <div className="empty-actions">
+            <button
+              type="button"
+              className="reset-filters-btn"
+              onClick={() => setActiveView('all')}
+            >
+              👥 View All Sites & Team
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // Empty state for Open Pool (Unassigned)
+    if (activeView === 'unassigned') {
+      return (
+        <div className="feed-empty-state">
+          <div className="empty-badge-icon">🌐</div>
+          <h3>No Unassigned Pending Sites in Pool</h3>
+          <p>All pending site deployments have been claimed by team engineers. New sites added will appear here.</p>
+          <div className="empty-actions">
+            <button
+              type="button"
+              className="reset-filters-btn"
+              onClick={() => setActiveView('my-pending')}
+            >
+              📌 View My Pending Sites
+            </button>
+            <button
+              type="button"
+              className="add-site-cta"
+              onClick={() => {
+                setRecordToEdit(null);
+                setIsFormOpen(true);
+              }}
+            >
+              ＋ Add Deployment
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // Default empty state for All Sites
+    return (
+      <div className="feed-empty-state">
+        <div className="empty-badge-icon">📡</div>
+        <h3>No site deployments found</h3>
+        <p>
+          {statusFilter !== 'all' || ownershipFilter !== 'all'
+            ? 'No sites match your active status or ownership filters.'
+            : 'Get started by registering your first site deployment.'}
+        </p>
+        {statusFilter !== 'all' || ownershipFilter !== 'all' ? (
+          <button
+            type="button"
+            className="reset-filters-btn"
+            onClick={() => {
+              setStatusFilter('all');
+              setOwnershipFilter('all');
+            }}
+          >
+            Clear Active Filters
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="add-site-cta"
+            onClick={() => {
+              setRecordToEdit(null);
+              setIsFormOpen(true);
+            }}
+          >
+            ＋ Add First Deployment
+          </button>
+        )}
+      </div>
+    );
+  };
+
   // Loading Screen
   if (isAuthChecking) {
     return (
@@ -381,6 +621,9 @@ export default function App() {
         )}
 
         <Toolbar
+          activeView={activeView}
+          onViewChange={setActiveView}
+          viewCounts={viewCounts}
           kind={kind}
           onKindChange={(newKind) => {
             setKind(newKind);
@@ -404,82 +647,69 @@ export default function App() {
           onOpenUserManagement={() => setIsUserMgmtOpen(true)}
         />
 
-        <SummaryCards
-          kind={kind}
-          total={statusStats.total}
-          completed={statusStats.completed}
-          pending={statusStats.pending}
-          onHold={statusStats.onHold}
-          failed={statusStats.failed}
-          activeFilter={statusFilter}
-          onSelectStatus={(st) => setStatusFilter(st)}
-        />
+        {search.trim() ? (
+          <>
+            {/* SEARCH ACTIVE: Search results feed rendered directly ON TOP */}
+            <div className="search-results-banner">
+              <div className="search-banner-info">
+                <span className="search-banner-icon">🔍</span>
+                <span>
+                  Search results for <strong>"{search.trim()}"</strong> — {displayedRecords.length} {displayedRecords.length === 1 ? 'site' : 'sites'} found
+                </span>
+              </div>
+              <button
+                type="button"
+                className="search-clear-banner-btn"
+                onClick={() => setSearch('')}
+                title="Exit search and return to dashboard"
+              >
+                ✕ Clear Search
+              </button>
+            </div>
 
-        {/* Feed of Site Records */}
-        <section className="sites-feed">
-          {isLoading ? (
-            <div className="feed-loading-box">
-              <div className="feed-spinner"></div>
-              <span>Querying cloud PostgreSQL database...</span>
+            <section className="sites-feed">
+              {renderFeedContent()}
+            </section>
+
+            <div className="search-cards-subheading">
+              <span>Overall Statistics ({kind === 'All' ? 'All Sites' : kind === 'Branch' ? 'Branches' : 'ATMs'})</span>
             </div>
-          ) : displayedRecords.length > 0 ? (
-            <div className="sites-grid">
-              {displayedRecords.map(record => (
-                <RecordCard
-                  key={record.id}
-                  record={record}
-                  currentUser={currentUser}
-                  onClaim={handleClaimSite}
-                  onStatusChange={handleStatusChange}
-                  onRequestTransfer={handleRequestTransfer}
-                  onAcceptTransfer={handleAcceptTransfer}
-                  onRejectTransfer={handleRejectTransfer}
-                  onEdit={(rec) => {
-                    setRecordToEdit(rec);
-                    setIsFormOpen(true);
-                  }}
-                  onDelete={(rec) => setRecordToDelete(rec)}
-                  onExport={handleExportSingle}
-                  onNotify={showToast}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="feed-empty-state">
-              <div className="empty-badge-icon">📡</div>
-              <h3>No site deployments found</h3>
-              <p>
-                {search || statusFilter !== 'all' || ownershipFilter !== 'all'
-                  ? 'No sites match your active search or filters.'
-                  : `Get started by registering your first site deployment.`}
-              </p>
-              {search || statusFilter !== 'all' || ownershipFilter !== 'all' ? (
-                <button
-                  type="button"
-                  className="reset-filters-btn"
-                  onClick={() => {
-                    setSearch('');
-                    setStatusFilter('all');
-                    setOwnershipFilter('all');
-                  }}
-                >
-                  Clear Active Filters
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="add-site-cta"
-                  onClick={() => {
-                    setRecordToEdit(null);
-                    setIsFormOpen(true);
-                  }}
-                >
-                  ＋ Add First Deployment
-                </button>
-              )}
-            </div>
-          )}
-        </section>
+            <SummaryCards
+              kind={kind}
+              total={statusStats.total}
+              completed={statusStats.completed}
+              pending={statusStats.pending}
+              onHold={statusStats.onHold}
+              failed={statusStats.failed}
+              activeFilter={statusFilter}
+              onSelectStatus={(st) => {
+                setActiveView('all');
+                setStatusFilter(st);
+              }}
+            />
+          </>
+        ) : (
+          <>
+            {/* NORMAL DASHBOARD: Summary KPI Cards on top */}
+            <SummaryCards
+              kind={kind}
+              total={statusStats.total}
+              completed={statusStats.completed}
+              pending={statusStats.pending}
+              onHold={statusStats.onHold}
+              failed={statusStats.failed}
+              activeFilter={statusFilter}
+              onSelectStatus={(st) => {
+                setActiveView('all');
+                setStatusFilter(st);
+              }}
+            />
+
+            <section className="sites-feed">
+              {renderFeedContent()}
+            </section>
+          </>
+        )}
 
         <footer className="portal-footer">
           <p>
@@ -496,6 +726,7 @@ export default function App() {
           recordToEdit={recordToEdit}
           currentUser={currentUser}
           users={users}
+          records={records}
           onSave={handleSaveRecord}
           onClose={() => {
             setIsFormOpen(false);

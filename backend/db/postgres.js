@@ -781,6 +781,95 @@ const db = {
     return r ? formatRecordRow(r) : null;
   },
 
+  // Records: Check for duplicate Branch DP Code or ATM ID
+  async checkDuplicateRecord({ kind, dpCode, atmId, excludeId }) {
+    await initDatabase();
+    const p = getPool();
+    const cleanKind = (kind || 'Branch').trim();
+
+    // 1. Branch Duplicate Check: DP Code must be unique among branches
+    if (cleanKind === 'Branch' && dpCode && dpCode.trim()) {
+      const cleanDp = dpCode.trim();
+      if (p && isInitialized) {
+        try {
+          const sql = excludeId
+            ? 'SELECT id, dp_code, fe_name, claimed_by_name FROM records WHERE kind = $1 AND LOWER(TRIM(dp_code)) = LOWER(TRIM($2)) AND id != $3 LIMIT 1'
+            : 'SELECT id, dp_code, fe_name, claimed_by_name FROM records WHERE kind = $1 AND LOWER(TRIM(dp_code)) = LOWER(TRIM($2)) LIMIT 1';
+          const params = excludeId ? ['Branch', cleanDp, excludeId] : ['Branch', cleanDp];
+          const res = await p.query(sql, params);
+          if (res.rows.length > 0) {
+            const match = res.rows[0];
+            return {
+              isDuplicate: true,
+              field: 'dpCode',
+              value: cleanDp,
+              message: `Branch DP Code "${cleanDp}" already exists in the system (Site: ${match.dp_code}, Owner: ${match.claimed_by_name || 'Unassigned'}). Duplicate branch entries are not allowed.`
+            };
+          }
+        } catch (err) {
+          console.warn('⚠️ [PostgreSQL] checkDuplicateRecord query error:', err.message);
+        }
+      }
+
+      // Memory fallback
+      const match = memRecords.find(r => 
+        (r.kind || 'Branch') === 'Branch' &&
+        (r.dp_code || '').trim().toLowerCase() === cleanDp.toLowerCase() &&
+        (!excludeId || r.id !== excludeId)
+      );
+      if (match) {
+        return {
+          isDuplicate: true,
+          field: 'dpCode',
+          value: cleanDp,
+          message: `Branch DP Code "${cleanDp}" already exists in the system. Duplicate branch entries are not allowed.`
+        };
+      }
+    }
+
+    // 2. ATM Duplicate Check: ATM ID must be unique among ATMs (base DP code CAN be duplicate)
+    if (cleanKind === 'ATM' && atmId && atmId.trim()) {
+      const cleanAtmId = atmId.trim();
+      if (p && isInitialized) {
+        try {
+          const sql = excludeId
+            ? 'SELECT id, atm_id, fe_name, claimed_by_name FROM records WHERE kind = $1 AND LOWER(TRIM(atm_id)) = LOWER(TRIM($2)) AND id != $3 LIMIT 1'
+            : 'SELECT id, atm_id, fe_name, claimed_by_name FROM records WHERE kind = $1 AND LOWER(TRIM(atm_id)) = LOWER(TRIM($2)) LIMIT 1';
+          const params = excludeId ? ['ATM', cleanAtmId, excludeId] : ['ATM', cleanAtmId];
+          const res = await p.query(sql, params);
+          if (res.rows.length > 0) {
+            const match = res.rows[0];
+            return {
+              isDuplicate: true,
+              field: 'atmId',
+              value: cleanAtmId,
+              message: `ATM ID "${cleanAtmId}" already exists in the system (Site: ${match.atm_id}, Owner: ${match.claimed_by_name || 'Unassigned'}). Duplicate ATM entries are not allowed.`
+            };
+          }
+        } catch (err) {
+          console.warn('⚠️ [PostgreSQL] checkDuplicateRecord query error:', err.message);
+        }
+      }
+
+      // Memory fallback
+      const match = memRecords.find(r => 
+        r.kind === 'ATM' &&
+        (r.atm_id || '').trim().toLowerCase() === cleanAtmId.toLowerCase() &&
+        (!excludeId || r.id !== excludeId)
+      );
+      if (match) {
+        return {
+          isDuplicate: true,
+          field: 'atmId',
+          value: cleanAtmId,
+          message: `ATM ID "${cleanAtmId}" already exists in the system. Duplicate ATM entries are not allowed.`
+        };
+      }
+    }
+
+    return { isDuplicate: false };
+  },
+
   // Records: Create
   async createRecord(data, user = {}) {
     await initDatabase();

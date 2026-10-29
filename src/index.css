@@ -458,6 +458,174 @@ input, select, textarea {
 /* ========================================================
    4. TOOLBAR & CONTROLS
 ======================================================== */
+.toolbar-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.dashboard-view-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #ffffff;
+  padding: 6px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--shadow-sm);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.dashboard-view-tabs::-webkit-scrollbar {
+  height: 4px;
+}
+.dashboard-view-tabs::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.view-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: var(--radius-md);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  transition: all 0.18s ease;
+  cursor: pointer;
+}
+
+.view-tab-btn:hover {
+  background: #f1f5f9;
+  color: var(--text-primary);
+}
+
+.view-tab-btn.active {
+  background: var(--primary-blue-light);
+  color: var(--primary-blue);
+  border-color: #bfdbfe;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.12);
+}
+
+.view-tab-btn .tab-icon {
+  font-size: 14px;
+}
+
+.view-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+  background: #e2e8f0;
+  color: var(--text-secondary);
+}
+
+.view-tab-btn.active .view-tab-badge {
+  background: var(--primary-blue);
+  color: #ffffff;
+}
+
+.view-tab-badge.unassigned-badge {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.view-tab-btn.active .view-tab-badge.unassigned-badge {
+  background: #f59e0b;
+  color: #ffffff;
+}
+
+.search-results-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius-md);
+  padding: 12px 18px;
+  margin-bottom: 16px;
+  gap: 12px;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+.search-banner-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: #1e40af;
+}
+
+.search-banner-icon {
+  font-size: 17px;
+}
+
+.search-clear-banner-btn {
+  background: #ffffff;
+  border: 1px solid #93c5fd;
+  color: #1d4ed8;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.search-clear-banner-btn:hover {
+  background: #dbeafe;
+  color: #1e3a8a;
+}
+
+.search-cards-subheading {
+  display: flex;
+  align-items: center;
+  margin-top: 24px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.empty-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.claim-empty-btn {
+  background: var(--primary-blue);
+  color: #ffffff;
+  padding: 9px 18px;
+  border-radius: var(--radius-md);
+  font-size: 13.5px;
+  font-weight: 600;
+  transition: background 0.15s;
+}
+
+.claim-empty-btn:hover {
+  background: var(--primary-blue-hover);
+}
+
 .toolbar-container {
   display: flex;
   align-items: center;
@@ -1838,6 +2006,22 @@ input, select, textarea {
 
 /* Responsive */
 @media (max-width: 768px) {
+  .dashboard-view-tabs {
+    padding: 4px;
+    gap: 6px;
+  }
+  .view-tab-btn {
+    padding: 8px 12px;
+    font-size: 12.5px;
+  }
+  .search-results-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .search-clear-banner-btn {
+    width: 100%;
+    text-align: center;
+  }
   .form-fields-grid { grid-template-columns: 1fr; }
   .toolbar-container { flex-direction: column; align-items: stretch; }
   .toolbar-actions { flex-direction: column; align-items: stretch; }

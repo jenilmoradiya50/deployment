@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-export default function RecordFormModal({ kind = 'Branch', recordToEdit, currentUser, users = [], onSave, onClose }) {
+export default function RecordFormModal({ kind = 'Branch', recordToEdit, currentUser, users = [], records = [], onSave, onClose }) {
   const isEditing = Boolean(recordToEdit && recordToEdit.id);
   const [isQuickAdd, setIsQuickAdd] = useState(!isEditing);
   const [formData, setFormData] = useState({});
@@ -104,6 +104,33 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
       if (!formData.dpCode || !formData.dpCode.trim()) {
         setErrorMsg('Branch Base DP Code is required for ATM.');
         document.getElementById('f_baseDpCode')?.focus();
+        return;
+      }
+    }
+
+    // Stop duplicate entries (Branch DP Code or ATM ID)
+    if (isBranch) {
+      const cleanDp = (formData.dpCode || '').trim().toLowerCase();
+      const duplicateBranch = records.find(r => 
+        (r.kind || 'Branch') === 'Branch' &&
+        (r.dpCode || '').trim().toLowerCase() === cleanDp &&
+        r.id !== recordToEdit?.id
+      );
+      if (duplicateBranch) {
+        setErrorMsg(`Branch DP Code "${formData.dpCode.trim()}" already exists in database (Site: ${duplicateBranch.dpCode}). Duplicate branch entries are not allowed.`);
+        document.getElementById('f_dpCode')?.focus();
+        return;
+      }
+    } else {
+      const cleanAtm = (formData.atmId || '').trim().toLowerCase();
+      const duplicateAtm = records.find(r => 
+        r.kind === 'ATM' &&
+        (r.atmId || '').trim().toLowerCase() === cleanAtm &&
+        r.id !== recordToEdit?.id
+      );
+      if (duplicateAtm) {
+        setErrorMsg(`ATM ID "${formData.atmId.trim()}" already exists in database (Site: ${duplicateAtm.atmId}). Duplicate ATM entries are not allowed.`);
+        document.getElementById('f_atmId')?.focus();
         return;
       }
     }
