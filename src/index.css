@@ -591,6 +591,20 @@ input, select, textarea {
   color: #1e3a8a;
 }
 
+.stats-cards-divider {
+  display: flex;
+  align-items: center;
+  margin-top: 36px;
+  margin-bottom: 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  border-top: 1px solid var(--card-border);
+  padding-top: 22px;
+}
+
 .search-cards-subheading {
   display: flex;
   align-items: center;

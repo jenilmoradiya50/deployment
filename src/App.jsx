@@ -647,69 +647,47 @@ export default function App() {
           onOpenUserManagement={() => setIsUserMgmtOpen(true)}
         />
 
-        {search.trim() ? (
-          <>
-            {/* SEARCH ACTIVE: Search results feed rendered directly ON TOP */}
-            <div className="search-results-banner">
-              <div className="search-banner-info">
-                <span className="search-banner-icon">🔍</span>
-                <span>
-                  Search results for <strong>"{search.trim()}"</strong> — {displayedRecords.length} {displayedRecords.length === 1 ? 'site' : 'sites'} found
-                </span>
-              </div>
-              <button
-                type="button"
-                className="search-clear-banner-btn"
-                onClick={() => setSearch('')}
-                title="Exit search and return to dashboard"
-              >
-                ✕ Clear Search
-              </button>
+        {search.trim() && (
+          <div className="search-results-banner">
+            <div className="search-banner-info">
+              <span className="search-banner-icon">🔍</span>
+              <span>
+                Search results for <strong>"{search.trim()}"</strong> — {displayedRecords.length} {displayedRecords.length === 1 ? 'site' : 'sites'} found
+              </span>
             </div>
-
-            <section className="sites-feed">
-              {renderFeedContent()}
-            </section>
-
-            <div className="search-cards-subheading">
-              <span>Overall Statistics ({kind === 'All' ? 'All Sites' : kind === 'Branch' ? 'Branches' : 'ATMs'})</span>
-            </div>
-            <SummaryCards
-              kind={kind}
-              total={statusStats.total}
-              completed={statusStats.completed}
-              pending={statusStats.pending}
-              onHold={statusStats.onHold}
-              failed={statusStats.failed}
-              activeFilter={statusFilter}
-              onSelectStatus={(st) => {
-                setActiveView('all');
-                setStatusFilter(st);
-              }}
-            />
-          </>
-        ) : (
-          <>
-            {/* NORMAL DASHBOARD: Summary KPI Cards on top */}
-            <SummaryCards
-              kind={kind}
-              total={statusStats.total}
-              completed={statusStats.completed}
-              pending={statusStats.pending}
-              onHold={statusStats.onHold}
-              failed={statusStats.failed}
-              activeFilter={statusFilter}
-              onSelectStatus={(st) => {
-                setActiveView('all');
-                setStatusFilter(st);
-              }}
-            />
-
-            <section className="sites-feed">
-              {renderFeedContent()}
-            </section>
-          </>
+            <button
+              type="button"
+              className="search-clear-banner-btn"
+              onClick={() => setSearch('')}
+              title="Exit search and return to dashboard"
+            >
+              ✕ Clear Search
+            </button>
+          </div>
         )}
+
+        {/* Sites List ALWAYS ON TOP (Immediate Access on Mobile & Desktop) */}
+        <section className="sites-feed">
+          {renderFeedContent()}
+        </section>
+
+        {/* KPI Summary Cards AT THE BOTTOM (No Scrolling Needed to See Sites) */}
+        <div className="stats-cards-divider">
+          <span>Overall Status Breakdown ({kind === 'All' ? 'All Sites' : kind === 'Branch' ? 'Branches' : 'ATMs'})</span>
+        </div>
+        <SummaryCards
+          kind={kind}
+          total={statusStats.total}
+          completed={statusStats.completed}
+          pending={statusStats.pending}
+          onHold={statusStats.onHold}
+          failed={statusStats.failed}
+          activeFilter={statusFilter}
+          onSelectStatus={(st) => {
+            setActiveView('all');
+            setStatusFilter(st);
+          }}
+        />
 
         <footer className="portal-footer">
           <p>
