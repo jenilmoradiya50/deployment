@@ -292,7 +292,7 @@ app.put('/api/records/:id', authMiddleware, async (req, res) => {
         });
       }
       return res.status(403).json({
-        error: `This site is owned by ${existing.claimedByName || existing.claimedBy}. Only the assigned NOC, PM, or Admin can edit it. You can click "Request Transfer" to ask for site handover.`
+        error: `This site is handled by ${existing.claimedByName || existing.claimedBy}. Only the assigned NOC handler, PM, or Admin can edit it. You can click "Request Transfer" to ask for site handover.`
       });
     }
 
@@ -382,11 +382,11 @@ app.post('/api/records/:id/request-transfer', authMiddleware, async (req, res) =
   }
 });
 
-// Site Handover: Current owner or Admin/PM accepts transfer
+// Site Handover: Current handler or Admin/PM accepts transfer
 app.post('/api/records/:id/accept-transfer', authMiddleware, async (req, res) => {
   try {
     const updated = await db.acceptTransfer(req.params.id, req.user);
-    res.json({ message: 'Site transfer accepted! Ownership updated.', record: updated });
+    res.json({ message: 'Site transfer accepted! Handler updated.', record: updated });
   } catch (err) {
     res.status(400).json({ error: err.message || 'Failed to accept transfer' });
   }

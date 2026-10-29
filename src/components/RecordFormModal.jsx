@@ -271,12 +271,32 @@ export default function RecordFormModal({
     const nextNotes = formData.notes ? `${formData.notes}\n${tag}` : tag;
 
     setFormData(prev => {
+      const prevHandler = prev.claimedBy || '';
+      const prevHandlerName = prev.claimedByName || prevHandler;
+      const existingHistory = Array.isArray(prev.handlerHistory) ? prev.handlerHistory : [];
+
       const next = {
         ...prev,
         deploymentStatus: targetStatus,
         working: targetStatus === 'Completed' ? 'Yes' : 'No',
         notes: nextNotes
       };
+
+      // When placing on hold, unassign from handler and record history
+      if (targetStatus === 'On Hold') {
+        const onHoldEntry = {
+          handler: prevHandler || currentUser?.username || 'Unassigned',
+          handlerName: prevHandlerName || currentUser?.name || currentUser?.username || 'Unassigned',
+          action: 'Placed On Hold (Unassigned)',
+          timestamp: new Date().toISOString(),
+          reason: reason.trim()
+        };
+        next.handlerHistory = [onHoldEntry, ...existingHistory];
+        next.claimedBy = '';
+        next.claimedByName = '';
+        next.isUnassigned = true;
+      }
+
       scheduleAutoSave(next, secondaryIps, true);
       return next;
     });
@@ -599,10 +619,10 @@ export default function RecordFormModal({
                     />
                   </div>
 
-                  {/* Site Assignment & NOC Ownership */}
+                  {/* Site Assignment & NOC Handler */}
                   <div className="modal-form-field full site-assignment-field">
                     <label htmlFor="f_qa_claimedBy" className="field-title">
-                      Site Assignment & NOC Ownership
+                      Site Assignment & NOC Handler
                     </label>
                     <select
                       id="f_qa_claimedBy"
@@ -622,14 +642,14 @@ export default function RecordFormModal({
                         }
                       }}
                     >
-                      <option value="">⚪ Unassigned (Open Pool - Available for any NOC to Take/Claim)</option>
+                      <option value="">⚪ Unassigned (Open Pool - Available for any NOC to Take/Handle)</option>
                       {currentUser && (
                         <option value={currentUser.username}>
                           👤 Assign to Myself ({currentUser.name || currentUser.username})
                         </option>
                       )}
                       {users.filter(u => u.username !== currentUser?.username).length > 0 && (
-                        <optgroup label="Assign to Specific Team Member:">
+                        <optgroup label="Assign to Specific NOC Handler:">
                           {users.filter(u => u.username !== currentUser?.username).map(u => (
                             <option key={u.id || u.username} value={u.username}>
                               🧑‍💻 {u.name ? `${u.name} (${u.username})` : u.username} {u.role ? `[${u.role.toUpperCase()}]` : ''}
@@ -640,11 +660,11 @@ export default function RecordFormModal({
                     </select>
                     {!formData.claimedBy ? (
                       <div className="assignment-help-hint unassigned">
-                        🌐 <strong>Open Pool:</strong> This site will be added as unassigned so any NOC engineer can claim it using the <strong>"Take / Claim Site"</strong> button.
+                        🌐 <strong>Open Pool:</strong> This site will be added as unassigned so any NOC handler can claim it using the <strong>"Take / Claim Site"</strong> button.
                       </div>
                     ) : (
                       <div className="assignment-help-hint assigned">
-                        📌 <strong>Assigned to:</strong> {formData.claimedByName || formData.claimedBy}
+                        📌 <strong>Assigned Handler:</strong> {formData.claimedByName || formData.claimedBy}
                       </div>
                     )}
                   </div>
@@ -693,7 +713,7 @@ export default function RecordFormModal({
               <div className="form-section-card">
                 <div className="form-section-header">
                   <span className="sec-icon">🚦</span>
-                  <h4>Deployment Status & Ownership</h4>
+                  <h4>Deployment Status & Site Handler</h4>
                 </div>
                 <div className="form-fields-grid">
                   <div className="modal-form-field">
@@ -721,26 +741,55 @@ export default function RecordFormModal({
                   </div>
 
                   <div className="modal-form-field full site-assignment-field">
-                    <label className="field-title">Assigned NOC Engineer & Ownership</label>
+                    <label className="field-title">Assigned NOC Handler</label>
                     <select
                       className="field-input"
                       value={formData.claimedBy || ''}
                       onChange={(e) => {
                         const selectedUname = e.target.value;
                         const found = users.find(u => u.username === selectedUname);
-                        handleChange('claimedBy', selectedUname);
-                        handleChange('claimedByName', found ? (found.name || found.username) : selectedUname);
-                        handleChange('isUnassigned', !selectedUname);
+                        const newName = found ? (found.name || found.username) : selectedUname;
+                        const prevHandler = formData.claimedBy || '';
+                        const prevHistory = Array.isArray(formData.handlerHistory) ? formData.handlerHistory : [];
+
+                        let updatedHistory = prevHistory;
+                        if (selectedUname && selectedUname !== prevHandler) {
+                          updatedHistory = [{
+                            handler: selectedUname,
+                            handlerName: newName,
+                            action: prevHandler ? `Reassigned from ${formData.claimedByName || prevHandler}` : 'Assigned as Handler',
+                            timestamp: new Date().toISOString()
+                          }, ...prevHistory];
+                        } else if (!selectedUname && prevHandler) {
+                          updatedHistory = [{
+                            handler: prevHandler,
+                            handlerName: formData.claimedByName || prevHandler,
+                            action: 'Unassigned to Open Pool',
+                            timestamp: new Date().toISOString()
+                          }, ...prevHistory];
+                        }
+
+                        setFormData(prev => {
+                          const next = {
+                            ...prev,
+                            claimedBy: selectedUname,
+                            claimedByName: newName,
+                            isUnassigned: !selectedUname,
+                            handlerHistory: updatedHistory
+                          };
+                          scheduleAutoSave(next, secondaryIps, true);
+                          return next;
+                        });
                       }}
                     >
-                      <option value="">⚪ Unassigned / Open Pool (Available for any NOC to Take/Claim)</option>
+                      <option value="">⚪ Unassigned / Open Pool (Available for any NOC to Take/Handle)</option>
                       {currentUser && (
                         <option value={currentUser.username}>
                           👤 Assign to Myself ({currentUser.name || currentUser.username})
                         </option>
                       )}
                       {users.filter(u => u.username !== currentUser?.username).length > 0 && (
-                        <optgroup label="Assign to Specific Team Member:">
+                        <optgroup label="Assign to Specific NOC Handler:">
                           {users.filter(u => u.username !== currentUser?.username).map(u => (
                             <option key={u.id || u.username} value={u.username}>
                               🧑‍💻 {u.name ? `${u.name} (${u.username})` : u.username} {u.role ? `[${u.role.toUpperCase()}]` : ''}
@@ -751,11 +800,11 @@ export default function RecordFormModal({
                     </select>
                     {!formData.claimedBy ? (
                       <div className="assignment-help-hint unassigned">
-                        🌐 <strong>Open Pool:</strong> This site is unassigned so NOC engineers can claim it using the <strong>"Take / Claim Site"</strong> button.
+                        🌐 <strong>Open Pool:</strong> This site is unassigned so NOC handlers can claim it using the <strong>"Take / Claim Site"</strong> button.
                       </div>
                     ) : (
                       <div className="assignment-help-hint assigned">
-                        📌 <strong>Assigned to:</strong> {formData.claimedByName || formData.claimedBy}
+                        📌 <strong>Assigned Handler:</strong> {formData.claimedByName || formData.claimedBy}
                       </div>
                     )}
                   </div>

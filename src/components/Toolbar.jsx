@@ -3,7 +3,7 @@ import React from 'react';
 export default function Toolbar({
   activeView = 'my-pending',
   onViewChange,
-  viewCounts = { myPending: 0, completed: 0, unassignedPending: 0, all: 0 },
+  viewCounts = { myPending: 0, completed: 0, onHold: 0, unassignedPending: 0, all: 0 },
   kind = 'All',
   onKindChange,
   totalCount = 0,
@@ -13,6 +13,8 @@ export default function Toolbar({
   onSearchChange,
   statusFilter,
   onStatusFilterChange,
+  handlerFilter,
+  onHandlerFilterChange,
   ownershipFilter,
   onOwnershipFilterChange,
   users = [],
@@ -20,6 +22,9 @@ export default function Toolbar({
   canManageUsers = false,
   onOpenUserManagement
 }) {
+  const currentHandlerFilter = handlerFilter !== undefined ? handlerFilter : (ownershipFilter || 'all');
+  const handleFilterChange = onHandlerFilterChange || onOwnershipFilterChange;
+
   return (
     <div className="toolbar-wrapper">
       {/* 1. Primary Dashboard View Navigation Tabs */}
@@ -37,6 +42,28 @@ export default function Toolbar({
 
         <button
           type="button"
+          className={`view-tab-btn ${activeView === 'on-hold' ? 'active' : ''}`}
+          onClick={() => onViewChange && onViewChange('on-hold')}
+          title="Dedicated pool of sites placed on hold (unassigned with previous NOC history)"
+        >
+          <span className="tab-icon">⏸️</span>
+          <span className="tab-label">On Hold Sites</span>
+          <span className="view-tab-badge hold-badge">{viewCounts.onHold || 0}</span>
+        </button>
+
+        <button
+          type="button"
+          className={`view-tab-btn ${activeView === 'unassigned' ? 'active' : ''}`}
+          onClick={() => onViewChange && onViewChange('unassigned')}
+          title="Open pool of unassigned pending sites waiting for a NOC handler to claim"
+        >
+          <span className="tab-icon">🌐</span>
+          <span className="tab-label">Open Pool (Unassigned)</span>
+          <span className="view-tab-badge unassigned-badge">{viewCounts.unassignedPending}</span>
+        </button>
+
+        <button
+          type="button"
           className={`view-tab-btn ${activeView === 'completed' ? 'active' : ''}`}
           onClick={() => onViewChange && onViewChange('completed')}
           title="View completed deployments"
@@ -48,20 +75,9 @@ export default function Toolbar({
 
         <button
           type="button"
-          className={`view-tab-btn ${activeView === 'unassigned' ? 'active' : ''}`}
-          onClick={() => onViewChange && onViewChange('unassigned')}
-          title="Open pool of unassigned pending sites waiting for a NOC engineer to claim"
-        >
-          <span className="tab-icon">🌐</span>
-          <span className="tab-label">Open Pool (Unassigned)</span>
-          <span className="view-tab-badge unassigned-badge">{viewCounts.unassignedPending}</span>
-        </button>
-
-        <button
-          type="button"
           className={`view-tab-btn ${activeView === 'all' ? 'active' : ''}`}
           onClick={() => onViewChange && onViewChange('all')}
-          title="View all team deployments with user & status filters"
+          title="View all team deployments with handler & status filters"
         >
           <span className="tab-icon">👥</span>
           <span className="tab-label">All Sites & Team</span>
@@ -130,7 +146,7 @@ export default function Toolbar({
             )}
           </div>
 
-          {/* Show full status and owner filters when on All Sites tab */}
+          {/* Show full status and handler filters when on All Sites tab */}
           {activeView === 'all' && (
             <>
               {/* Status Filter */}
@@ -147,18 +163,18 @@ export default function Toolbar({
                 <option value="failed">🔴 Failed / Issues</option>
               </select>
 
-              {/* Ownership & Specific User Filter */}
+              {/* Site Handler & Specific User Filter */}
               <select
                 className="filter-dropdown"
-                value={ownershipFilter}
-                onChange={(e) => onOwnershipFilterChange(e.target.value)}
-                aria-label="Filter by Site Assignment"
+                value={currentHandlerFilter}
+                onChange={(e) => handleFilterChange && handleFilterChange(e.target.value)}
+                aria-label="Filter by Site Handler"
               >
-                <option value="all">Site Owner: All Team</option>
-                <option value="mine">📌 My Taken Sites</option>
-                <option value="unassigned">⚪ Unassigned / Available</option>
+                <option value="all">Site Handler: All Team</option>
+                <option value="mine">📌 Handled by Me</option>
+                <option value="unassigned">⚪ Unassigned Sites</option>
                 {users && users.length > 0 && (
-                  <optgroup label="Select Specific NOC / User:">
+                  <optgroup label="Filter by Specific NOC Handler:">
                     {users.map(u => (
                       <option key={u.id || u.username} value={`user:${u.username}`}>
                         👤 {u.name ? `${u.name} (${u.username})` : u.username}

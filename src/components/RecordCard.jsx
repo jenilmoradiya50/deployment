@@ -33,6 +33,13 @@ export default function RecordCard({
   const isUnassigned = !record.claimedBy;
   const hasClaimant = Boolean(record.claimedBy);
 
+  // Handler History & Movement tracking
+  const handlerHistory = Array.isArray(record.handlerHistory) ? record.handlerHistory : [];
+  const prevHandlerEntry = handlerHistory.find(h => h.handler && h.handler !== 'Unassigned') || null;
+  const prevHandlerName = prevHandlerEntry ? (prevHandlerEntry.handlerName || prevHandlerEntry.handler) : '';
+  const holdEntry = handlerHistory.find(h => h.action && h.action.includes('Hold'));
+  const holdReason = holdEntry?.reason || '';
+
   // Transfer state
   const hasPendingTransfer = Boolean(record.transferRequestedBy);
   const isRequester = record.transferRequestedBy && record.transferRequestedBy.toLowerCase() === uname;
@@ -106,9 +113,9 @@ export default function RecordCard({
             <div>
               <strong>Site Handover Request:</strong>
               {isRequester ? (
-                <span> You requested to take over this site. Waiting for approval from {record.claimedByName || record.claimedBy || 'owner'}.</span>
+                <span> You requested to take over this site. Waiting for approval from {record.claimedByName || record.claimedBy || 'current handler'}.</span>
               ) : (
-                <span> <em>{record.transferRequestedByName || record.transferRequestedBy}</em> requested to take over this site.</span>
+                <span> <em>{record.transferRequestedByName || record.transferRequestedBy}</em> requested to take over this site as handler.</span>
               )}
             </div>
           </div>
@@ -129,7 +136,7 @@ export default function RecordCard({
                   className="accept-transfer-btn"
                   onClick={() => onAcceptTransfer && onAcceptTransfer(record.id)}
                 >
-                  ✓ Allow & Transfer
+                  ✓ Allow Handover
                 </button>
                 <button
                   type="button"
@@ -144,16 +151,25 @@ export default function RecordCard({
         </div>
       )}
 
-      {/* Top Claim/Ownership Bar */}
-      <div className="site-claim-strip">
+      {/* Top Claim/Handler Bar */}
+      <div className={`site-claim-strip ${isOnHold ? 'is-on-hold-strip' : ''}`}>
         <div className="claim-left">
-          <span className="claim-icon">📌</span>
-          <span className="claim-label">Site Owner (NOC):</span>
+          <span className="claim-icon">{isOnHold ? '⏸️' : '📌'}</span>
+          <span className="claim-label">Site Handler (NOC):</span>
           {hasClaimant ? (
             <span className={`claim-name-pill ${isClaimedByMe ? 'is-me' : ''}`}>
               <strong>{record.claimedByName || record.claimedBy}</strong>
               {isClaimedByMe && <span className="you-tag">(You)</span>}
             </span>
+          ) : isOnHold ? (
+            <div className="hold-handler-info">
+              <span className="claim-unassigned-tag hold-tag">⚪ Unassigned (On Hold)</span>
+              {prevHandlerName && (
+                <span className="prev-handler-tag" title={`Site was placed on hold. Previous NOC: ${prevHandlerName}`}>
+                  👤 Prev NOC: <strong>{prevHandlerName}</strong>
+                </span>
+              )}
+            </div>
           ) : (
             <span className="claim-unassigned-tag">⚪ Open Pool (Unassigned)</span>
           )}
@@ -161,14 +177,14 @@ export default function RecordCard({
 
         {/* Claim or Request Handover */}
         <div className="claim-right">
-          {isUnassigned && onClaim && (
+          {(isUnassigned || isOnHold) && onClaim && (
             <button
               type="button"
               className="claim-action-btn"
               onClick={() => onClaim(record.id)}
-              title="Take ownership of this unassigned site into your active queue"
+              title={isOnHold ? "Take this on-hold site into your active queue to resume work" : "Take this unassigned site into your active queue as handler"}
             >
-              ✋ Take / Claim Site
+              ✋ {isOnHold ? 'Resume / Take Site' : 'Take / Claim Site'}
             </button>
           )}
 
@@ -185,12 +201,12 @@ export default function RecordCard({
               </button>
             </div>
           ) : (
-            !isClaimedByMe && !isUnassigned && !isAdminOrPM && (
+            !isClaimedByMe && !isUnassigned && !isOnHold && !isAdminOrPM && (
               <button
                 type="button"
                 className="request-transfer-btn"
                 onClick={() => onRequestTransfer && onRequestTransfer(record.id)}
-                title="Ask the current NOC owner for permission to take over this site"
+                title="Ask the current NOC handler for handover of this site"
               >
                 🤝 Request Handover
               </button>
@@ -240,7 +256,7 @@ export default function RecordCard({
               type="button"
               className="card-action-btn edit-disabled"
               disabled
-              title={isUnassigned ? "Unassigned site. Click 'Take / Claim Site' first to edit." : `Claimed by ${record.claimedByName || record.claimedBy}. Request handover to edit.`}
+              title={isUnassigned ? "Unassigned site. Click 'Take / Claim Site' first to edit." : isOnHold ? "Site is On Hold. Click 'Resume / Take Site' first to edit." : `Handled by ${record.claimedByName || record.claimedBy}. Request handover to edit.`}
             >
               <span className="btn-icon">🔒</span>
               <span className="btn-text">Locked</span>
@@ -271,12 +287,29 @@ export default function RecordCard({
 
       {/* COMPACT SUMMARY VIEW (Always visible) */}
       <div className="site-compact-summary">
-        {isUnassigned && (
+        {isOnHold ? (
+          <div className="compact-field hold-summary-box">
+            <div className="hold-summary-headline">
+              <span className="compact-lbl">Status:</span>
+              <span className="hold-status-pill">⏸️ On Hold (Unassigned Pool)</span>
+              {prevHandlerName && (
+                <span className="prev-noc-info">
+                  Previous NOC: <strong>{prevHandlerName}</strong>
+                </span>
+              )}
+            </div>
+            {holdReason && (
+              <div className="compact-hold-reason">
+                💬 <strong>Reason:</strong> {holdReason}
+              </div>
+            )}
+          </div>
+        ) : isUnassigned ? (
           <div className="compact-field">
             <span className="compact-lbl">Assignment:</span>
             <span className="open-tag-pill">⚪ Open Pool (Unassigned)</span>
           </div>
-        )}
+        ) : null}
 
         {!isBranch && record.dpCode && (
           <div className="compact-field">
@@ -667,6 +700,46 @@ export default function RecordCard({
                 <span>Engineering Remarks</span>
               </div>
               <p className="site-notes-text">{record.notes}</p>
+            </div>
+          )}
+
+          {/* NOC Handler History & Movement Log */}
+          {handlerHistory.length > 0 && (
+            <div className="site-section-panel handler-history-panel">
+              <div className="panel-header-sub">
+                <span>📜 NOC Handler History & Movements</span>
+                <span className="history-count-badge">
+                  {handlerHistory.length} event{handlerHistory.length === 1 ? '' : 's'}
+                </span>
+              </div>
+              <div className="history-timeline">
+                {handlerHistory.map((item, idx) => (
+                  <div key={idx} className="history-timeline-item">
+                    <div className="history-bullet"></div>
+                    <div className="history-item-content">
+                      <div className="history-top-line">
+                        <span className="history-handler-name">
+                          👤 <strong>{item.handlerName || item.handler}</strong>
+                        </span>
+                        <span className={`history-action-tag ${item.action?.includes('Hold') ? 'action-hold' : (item.action?.includes('Resumed') || item.action?.includes('Claimed') ? 'action-claim' : 'action-transfer')}`}>
+                          {item.action}
+                        </span>
+                        <span className="history-time">
+                          {item.timestamp ? new Date(item.timestamp).toLocaleString(undefined, {
+                            dateStyle: 'short',
+                            timeStyle: 'short'
+                          }) : '—'}
+                        </span>
+                      </div>
+                      {item.reason && (
+                        <div className="history-reason-text">
+                          💬 <em>"{item.reason}"</em>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

@@ -86,6 +86,7 @@ let memRecords = [
     drc_mail: 'Received',
     dc_dr_reply: 'Received',
     ip_source: 'Sheet',
+    handler_history: [],
     cables_connected: 'Connected',
     working: 'Yes',
     uat_submitted: 'Yes',
@@ -221,6 +222,10 @@ function formatRecordRow(row) {
     drcMail: row.drc_mail || 'Not received',
     dcDrReply: row.dc_dr_reply || (row.dc_mail === 'Received' || row.drc_mail === 'Received' ? 'Received' : 'Not received'),
     ipSource: row.ip_source || 'Sheet',
+    handlerHistory: (Array.isArray(row.handler_history)
+      ? row.handler_history
+      : (typeof row.handler_history === 'string' ? JSON.parse(row.handler_history || '[]') : [])
+    ),
     cablesConnected: row.cables_connected || 'Not connected',
     working: row.working || 'No',
     deploymentStatus: row.deployment_status || (row.working === 'Yes' ? 'Completed' : (row.working === 'No' ? 'Failed' : 'Pending')),
@@ -313,6 +318,7 @@ async function initDatabase() {
             drc_mail VARCHAR(30) DEFAULT 'Not received',
             dc_dr_reply VARCHAR(30) DEFAULT 'Not received',
             ip_source VARCHAR(50) DEFAULT 'Sheet',
+            handler_history JSONB DEFAULT '[]'::jsonb,
             cables_connected VARCHAR(30) DEFAULT 'Not connected',
             working VARCHAR(10) DEFAULT 'No',
             uat_submitted VARCHAR(10) DEFAULT 'No',
@@ -344,6 +350,7 @@ async function initDatabase() {
           ALTER TABLE records ADD COLUMN IF NOT EXISTS airtel_loopback_ip VARCHAR(50) DEFAULT '';
           ALTER TABLE records ADD COLUMN IF NOT EXISTS ip_source VARCHAR(50) DEFAULT 'Sheet';
           ALTER TABLE records ADD COLUMN IF NOT EXISTS dc_dr_reply VARCHAR(30) DEFAULT 'Not received';
+          ALTER TABLE records ADD COLUMN IF NOT EXISTS handler_history JSONB DEFAULT '[]'::jsonb;
         `).catch((e) => console.warn('Migration query warn:', e.message));
 
         // Auto-migrate legacy working status and dc/dr reply
@@ -819,7 +826,7 @@ const db = {
               isDuplicate: true,
               field: 'dpCode',
               value: cleanDp,
-              message: `Branch DP Code "${cleanDp}" already exists in the system (Site: ${match.dp_code}, Owner: ${match.claimed_by_name || 'Unassigned'}). Duplicate branch entries are not allowed.`
+              message: `Branch DP Code "${cleanDp}" already exists in the system (Site: ${match.dp_code}, Handler: ${match.claimed_by_name || 'Unassigned'}). Duplicate branch entries are not allowed.`
             };
           }
         } catch (err) {
@@ -859,7 +866,7 @@ const db = {
               isDuplicate: true,
               field: 'atmId',
               value: cleanAtmId,
-              message: `ATM ID "${cleanAtmId}" already exists in the system (Site: ${match.atm_id}, Owner: ${match.claimed_by_name || 'Unassigned'}). Duplicate ATM entries are not allowed.`
+              message: `ATM ID "${cleanAtmId}" already exists in the system (Site: ${match.atm_id}, Handler: ${match.claimed_by_name || 'Unassigned'}). Duplicate ATM entries are not allowed.`
             };
           }
         } catch (err) {
@@ -929,6 +936,15 @@ const db = {
     const airtelIs4G = data.airtelIs4G || 'No';
     const airtelLoopbackIp = data.airtelLoopbackIp || '';
 
+    const initialHistory = Array.isArray(data.handlerHistory) && data.handlerHistory.length > 0
+      ? data.handlerHistory
+      : (claimedBy ? [{
+          handler: claimedBy,
+          handlerName: claimedByName || claimedBy,
+          action: 'Initial Handler Assigned',
+          timestamp: new Date().toISOString()
+        }] : []);
+
     const p = getPool();
     if (p && isInitialized) {
       try {
@@ -945,7 +961,7 @@ const db = {
             airtel_present, airtel_is_4g, airtel_loopback_ip, airtel_ip, airtel_gateway, ce_ip, airtel_ping,
             deployment_status,
             configuration, mp_added, device_online, mail_sent, dc_mail, drc_mail, dc_dr_reply, cables_connected, working,
-            uat_submitted, uat_form_no, claimed_by, claimed_by_name, notes, created_by, updated_by
+            uat_submitted, uat_form_no, claimed_by, claimed_by_name, notes, handler_history, created_by, updated_by
           ) VALUES (
             $1, $2, $3, $4, $5, $6,
             $7, $8, $9,
@@ -958,7 +974,7 @@ const db = {
             $29, $30, $31, $32, $33, $34, $35,
             $36,
             $37, $38, $39, $40, $41, $42, $43, $44, $45,
-            $46, $47, $48, $49, $50, $51, $52
+            $46, $47, $48, $49, $50, $51, $52, $53
           ) RETURNING *;
         `;
 
@@ -975,7 +991,8 @@ const db = {
           deploymentStatus,
           data.configuration || 'Not completed', data.mpAdded || data.mp || 'No', data.deviceOnline || data.online || 'No', data.mailSent || data.mail || 'No',
           dcDrReply, dcDrReply, dcDrReply, data.cablesConnected || data.cables || 'Not connected', working,
-          data.uatSubmitted || 'No', data.uatFormNo || '', claimedBy, claimedByName, data.notes || '', author, author
+          data.uatSubmitted || 'No', data.uatFormNo || '', claimedBy, claimedByName, data.notes || '',
+          JSON.stringify(initialHistory), author, author
         ];
 
         const res = await p.query(sql, values);
@@ -1038,6 +1055,7 @@ const db = {
       claimed_by: claimedBy,
       claimed_by_name: claimedByName,
       notes: data.notes || '',
+      handler_history: initialHistory,
       created_by: author,
       updated_by: author,
       created_at: now,
@@ -1130,7 +1148,8 @@ const db = {
             notes = COALESCE($48, notes),
             ip_source = COALESCE($49, ip_source),
             dc_dr_reply = COALESCE($50, dc_dr_reply),
-            updated_by = $51,
+            handler_history = COALESCE($51, handler_history),
+            updated_by = $52,
             updated_at = CURRENT_TIMESTAMP
           WHERE id = $1
           RETURNING *;
@@ -1153,6 +1172,7 @@ const db = {
           updates.uatSubmitted, updates.uatFormNo, updates.claimedBy, updates.claimedByName,
           updates.notes,
           updates.ipSource, resolvedDcDrReply,
+          updates.handlerHistory !== undefined ? JSON.stringify(updates.handlerHistory) : null,
           author
         ];
 
@@ -1227,6 +1247,7 @@ const db = {
       claimed_by: updates.claimedBy ?? ex.claimed_by,
       claimed_by_name: updates.claimedByName ?? ex.claimed_by_name,
       notes: updates.notes ?? ex.notes,
+      handler_history: updates.handlerHistory !== undefined ? updates.handlerHistory : (ex.handler_history || []),
       updated_by: author,
       updated_at: new Date().toISOString()
     };
@@ -1248,7 +1269,27 @@ const db = {
       const reasonTag = `[${status} Reason - ${timeStr}]: ${String(reason).trim()}`;
       newNotes = newNotes ? `${newNotes}\n${reasonTag}` : reasonTag;
     }
-    return this.updateRecord(id, { deploymentStatus: status, working, notes: newNotes }, user);
+
+    const updates = { deploymentStatus: status, working, notes: newNotes };
+
+    // On Hold sites: unlinked from previous handler, sent to unassigned On-Hold pool, saving history of previous NOC
+    if (status === 'On Hold') {
+      const prevHandler = existing ? (existing.claimedBy || '') : '';
+      const prevHandlerName = existing ? (existing.claimedByName || prevHandler) : '';
+      const existingHistory = existing && Array.isArray(existing.handlerHistory) ? existing.handlerHistory : [];
+      const onHoldEntry = {
+        handler: prevHandler || user.username || 'Unassigned',
+        handlerName: prevHandlerName || user.name || user.username || 'Unassigned',
+        action: 'Placed On Hold (Unassigned)',
+        timestamp: new Date().toISOString(),
+        reason: reason ? String(reason).trim() : ''
+      };
+      updates.handlerHistory = [onHoldEntry, ...existingHistory];
+      updates.claimedBy = '';
+      updates.claimedByName = '';
+    }
+
+    return this.updateRecord(id, updates, user);
   },
 
   // Records: Delete
@@ -1271,15 +1312,30 @@ const db = {
     return false;
   },
 
-  // Claim site: user claims a site
+  // Claim site: user claims a site (takes as handler)
   async claimRecord(id, user = {}) {
+    const existing = await this.getRecordById(id);
+    const existingHistory = existing && Array.isArray(existing.handlerHistory) ? existing.handlerHistory : [];
+    const isFromHold = existing && existing.deploymentStatus === 'On Hold';
+    const newEntry = {
+      handler: user.username,
+      handlerName: user.name || user.username,
+      action: isFromHold ? 'Resumed from On Hold' : 'Claimed Site (Took as Handler)',
+      timestamp: new Date().toISOString()
+    };
+    const updatedHistory = [newEntry, ...existingHistory];
+    const newStatus = isFromHold ? 'Pending' : (existing?.deploymentStatus || 'Pending');
+
     return this.updateRecord(id, {
       claimedBy: user.username,
-      claimedByName: user.name || user.username
+      claimedByName: user.name || user.username,
+      deploymentStatus: newStatus,
+      working: newStatus === 'Completed' ? 'Yes' : 'No',
+      handlerHistory: updatedHistory
     }, user);
   },
 
-  // Request site transfer (NOC asks current owner for site handover)
+  // Request site transfer (NOC asks current handler for site handover)
   async requestTransfer(recordId, user = {}) {
     await initDatabase();
     const p = getPool();
@@ -1313,7 +1369,7 @@ const db = {
     return formatRecordRow(rec);
   },
 
-  // Accept site transfer (current owner or admin/pm approves transfer)
+  // Accept site transfer (current handler or admin/pm approves transfer)
   async acceptTransfer(recordId, user = {}) {
     await initDatabase();
     const p = getPool();
@@ -1324,14 +1380,22 @@ const db = {
 
     const userRole = (user.role || '').toLowerCase();
     const uname = (user.username || '').toLowerCase();
-    const isOwner = (record.claimedBy || '').toLowerCase() === uname;
-    const canAccept = isOwner || userRole === 'admin' || userRole === 'pm';
+    const isHandler = (record.claimedBy || '').toLowerCase() === uname;
+    const canAccept = isHandler || userRole === 'admin' || userRole === 'pm';
     if (!canAccept) {
       throw new Error('You do not have permission to approve this site transfer');
     }
 
-    const newOwner = record.transferRequestedBy;
-    const newOwnerName = record.transferRequestedByName || newOwner;
+    const newHandler = record.transferRequestedBy;
+    const newHandlerName = record.transferRequestedByName || newHandler;
+    const existingHistory = Array.isArray(record.handlerHistory) ? record.handlerHistory : [];
+    const transferEntry = {
+      handler: newHandler,
+      handlerName: newHandlerName,
+      action: `Handover Transferred from ${record.claimedByName || record.claimedBy || 'previous handler'}`,
+      timestamp: new Date().toISOString()
+    };
+    const updatedHistory = [transferEntry, ...existingHistory];
 
     if (p && isInitialized) {
       try {
@@ -1342,10 +1406,11 @@ const db = {
             transfer_requested_by = '',
             transfer_requested_by_name = '',
             transfer_requested_at = NULL,
+            handler_history = $4,
             updated_at = CURRENT_TIMESTAMP
           WHERE id = $3
           RETURNING *;
-        `, [newOwner, newOwnerName, recordId]);
+        `, [newHandler, newHandlerName, recordId, JSON.stringify(updatedHistory)]);
         if (res.rows.length > 0) return formatRecordRow(res.rows[0]);
       } catch (err) {
         console.warn('⚠️ [PostgreSQL] acceptTransfer query error:', err.message);
@@ -1354,11 +1419,12 @@ const db = {
 
     const rec = memRecords.find(r => r.id === recordId);
     if (!rec) throw new Error('Site record not found');
-    rec.claimed_by = newOwner;
-    rec.claimed_by_name = newOwnerName;
+    rec.claimed_by = newHandler;
+    rec.claimed_by_name = newHandlerName;
     rec.transfer_requested_by = '';
     rec.transfer_requested_by_name = '';
     rec.transfer_requested_at = null;
+    rec.handler_history = updatedHistory;
     return formatRecordRow(rec);
   },
 
@@ -1372,9 +1438,9 @@ const db = {
 
     const userRole = (user.role || '').toLowerCase();
     const uname = (user.username || '').toLowerCase();
-    const isOwner = (record.claimedBy || '').toLowerCase() === uname;
+    const isHandler = (record.claimedBy || '').toLowerCase() === uname;
     const isRequester = (record.transferRequestedBy || '').toLowerCase() === uname;
-    if (!isOwner && !isRequester && userRole !== 'admin' && userRole !== 'pm') {
+    if (!isHandler && !isRequester && userRole !== 'admin' && userRole !== 'pm') {
       throw new Error('Not authorized to cancel this transfer request');
     }
 

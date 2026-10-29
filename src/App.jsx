@@ -23,7 +23,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [ownershipFilter, setOwnershipFilter] = useState('all');
+  const [handlerFilter, setHandlerFilter] = useState('all');
   const [activeView, setActiveView] = useState('my-pending');
 
   // Modals state
@@ -173,25 +173,35 @@ export default function App() {
     const curUname = (currentUser?.username || '').toLowerCase();
     let myPending = 0;
     let completed = 0;
+    let onHold = 0;
     let unassignedPending = 0;
 
     currentKindRecords.forEach(r => {
       const recStatus = r.deploymentStatus || (r.working === 'Yes' ? 'Completed' : (r.working === 'No' ? 'Failed' : 'Pending'));
-      const isOwner = (r.claimedBy || '').toLowerCase() === curUname;
+      const isHandler = (r.claimedBy || '').toLowerCase() === curUname;
       const isUnclaimed = !r.claimedBy || r.claimedBy.trim() === '';
 
-      if (isOwner && recStatus !== 'Completed') {
+      // On Hold count: dedicated pool of on-hold sites (unassigned with previous NOC history)
+      if (recStatus === 'On Hold') {
+        onHold++;
+      }
+
+      // My Pending count: handled by me, excluding completed and on-hold
+      if (isHandler && recStatus !== 'Completed' && recStatus !== 'On Hold') {
         myPending++;
       }
 
+      // Completed count: sites completed
       if (recStatus === 'Completed') {
         if (isAdmin || isPM) {
           completed++;
-        } else if (isOwner) {
+        } else if (isHandler) {
           completed++;
         }
       }
 
+      // Open Pool (Unassigned): only ACTIVE PENDING unassigned sites (ready to claim)
+      // Excludes On Hold sites per user requirement (kept in dedicated Hold section)
       if (isUnclaimed && recStatus === 'Pending') {
         unassignedPending++;
       }
@@ -200,6 +210,7 @@ export default function App() {
     return {
       myPending,
       completed,
+      onHold,
       unassignedPending,
       all: currentKindRecords.length
     };
@@ -212,7 +223,7 @@ export default function App() {
 
     return currentKindRecords.filter(r => {
       const recStatus = r.deploymentStatus || (r.working === 'Yes' ? 'Completed' : (r.working === 'No' ? 'Failed' : 'Pending'));
-      const isOwner = (r.claimedBy || '').toLowerCase() === curUname;
+      const isHandler = (r.claimedBy || '').toLowerCase() === curUname;
       const isUnclaimed = !r.claimedBy || r.claimedBy.trim() === '';
 
       // If search query is entered, search across currentKindRecords regardless of active tab
@@ -223,21 +234,25 @@ export default function App() {
 
       // Tab View Filtering
       if (activeView === 'my-pending') {
-        return isOwner && recStatus !== 'Completed';
+        return isHandler && recStatus !== 'Completed' && recStatus !== 'On Hold';
+      }
+
+      if (activeView === 'on-hold') {
+        return recStatus === 'On Hold';
       }
 
       if (activeView === 'completed') {
         if (isAdmin || isPM) {
           return recStatus === 'Completed';
         }
-        return isOwner && recStatus === 'Completed';
+        return isHandler && recStatus === 'Completed';
       }
 
       if (activeView === 'unassigned') {
         return isUnclaimed && recStatus === 'Pending';
       }
 
-      // activeView === 'all': apply granular statusFilter and ownershipFilter
+      // activeView === 'all': apply granular statusFilter and handlerFilter
       if (statusFilter !== 'all') {
         if (statusFilter === 'pending' && recStatus !== 'Pending') return false;
         if (statusFilter === 'completed' && recStatus !== 'Completed') return false;
@@ -247,19 +262,19 @@ export default function App() {
         if (statusFilter === 'notWorking' && r.working !== 'No') return false;
       }
 
-      // Ownership Filter
-      if (ownershipFilter === 'mine') {
-        if (!isOwner) return false;
-      } else if (ownershipFilter === 'unassigned') {
+      // Handler Filter
+      if (handlerFilter === 'mine') {
+        if (!isHandler) return false;
+      } else if (handlerFilter === 'unassigned') {
         if (!isUnclaimed) return false;
-      } else if (ownershipFilter.startsWith('user:')) {
-        const targetUname = ownershipFilter.replace('user:', '').toLowerCase();
+      } else if (handlerFilter.startsWith('user:')) {
+        const targetUname = handlerFilter.replace('user:', '').toLowerCase();
         if ((r.claimedBy || '').toLowerCase() !== targetUname) return false;
       }
 
       return true;
     });
-  }, [currentKindRecords, search, activeView, statusFilter, ownershipFilter, currentUser, isAdmin, isPM]);
+  }, [currentKindRecords, search, activeView, statusFilter, handlerFilter, currentUser, isAdmin, isPM]);
 
   // Claim site
   const handleClaimSite = async (recordId) => {
@@ -277,7 +292,7 @@ export default function App() {
     try {
       const res = await api.requestTransfer(recordId);
       setRecords(prev => prev.map(r => r.id === recordId ? res.record : r));
-      showToast('Handover requested from current site owner!');
+      showToast('Handover requested from current site handler!');
     } catch (err) {
       showToast(err.message || 'Failed to request transfer', 'error');
     }
@@ -287,7 +302,7 @@ export default function App() {
     try {
       const res = await api.acceptTransfer(recordId);
       setRecords(prev => prev.map(r => r.id === recordId ? res.record : r));
-      showToast(`Site transfer accepted! Ownership assigned to ${res.record.claimedByName || res.record.claimedBy}.`);
+      showToast(`Site handover accepted! Handler updated to ${res.record.claimedByName || res.record.claimedBy}.`);
     } catch (err) {
       showToast(err.message || 'Failed to accept transfer', 'error');
     }
@@ -297,7 +312,7 @@ export default function App() {
     try {
       const res = await api.rejectTransfer(recordId);
       setRecords(prev => prev.map(r => r.id === recordId ? res.record : r));
-      showToast(res.message || 'Site transfer request cancelled/declined.');
+      showToast(res.message || 'Site handover request cancelled/declined.');
     } catch (err) {
       showToast(err.message || 'Failed to cancel/decline transfer', 'error');
     }
@@ -346,7 +361,11 @@ export default function App() {
     try {
       const res = await api.updateRecordStatus(recordId, targetStatus, reason.trim());
       setRecords(prev => prev.map(r => r.id === recordId ? res.record : r));
-      showToast(`Site marked as "${targetStatus}". Reason saved in Engineering Notes!`);
+      if (targetStatus === 'On Hold') {
+        showToast('Site placed On Hold and moved to Unassigned Hold pool. Reason recorded in notes!');
+      } else {
+        showToast(`Site marked as "${targetStatus}". Reason saved in Engineering Notes!`);
+      }
       setStatusReasonModal({ isOpen: false, recordId: null, targetStatus: '', siteIdentifier: '', reason: '' });
     } catch (err) {
       showToast('Could not update status: ' + err.message, 'error');
@@ -530,6 +549,33 @@ export default function App() {
       );
     }
 
+    // Empty state for On Hold Sites
+    if (activeView === 'on-hold') {
+      return (
+        <div className="feed-empty-state">
+          <div className="empty-badge-icon">⏸️</div>
+          <h3>No Sites Currently On Hold</h3>
+          <p>There are no site deployments on hold right now. Sites paused due to ISP, FE, or customer power delays will appear in this dedicated unassigned hold pool.</p>
+          <div className="empty-actions">
+            <button
+              type="button"
+              className="reset-filters-btn"
+              onClick={() => setActiveView('my-pending')}
+            >
+              📌 View My Pending Sites
+            </button>
+            <button
+              type="button"
+              className="claim-empty-btn"
+              onClick={() => setActiveView('unassigned')}
+            >
+              🌐 Open Pool ({viewCounts.unassignedPending} Available)
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     // Empty state for Completed Sites
     if (activeView === 'completed') {
       return (
@@ -590,17 +636,17 @@ export default function App() {
         <div className="empty-badge-icon">📡</div>
         <h3>No site deployments found</h3>
         <p>
-          {statusFilter !== 'all' || ownershipFilter !== 'all'
-            ? 'No sites match your active status or ownership filters.'
+          {statusFilter !== 'all' || handlerFilter !== 'all'
+            ? 'No sites match your active status or handler filters.'
             : 'Get started by registering your first site deployment.'}
         </p>
-        {statusFilter !== 'all' || ownershipFilter !== 'all' ? (
+        {statusFilter !== 'all' || handlerFilter !== 'all' ? (
           <button
             type="button"
             className="reset-filters-btn"
             onClick={() => {
               setStatusFilter('all');
-              setOwnershipFilter('all');
+              setHandlerFilter('all');
             }}
           >
             Clear Active Filters
@@ -693,8 +739,10 @@ export default function App() {
           onSearchChange={setSearch}
           statusFilter={statusFilter}
           onStatusFilterChange={setStatusFilter}
-          ownershipFilter={ownershipFilter}
-          onOwnershipFilterChange={setOwnershipFilter}
+          handlerFilter={handlerFilter}
+          onHandlerFilterChange={setHandlerFilter}
+          ownershipFilter={handlerFilter}
+          onOwnershipFilterChange={setHandlerFilter}
           users={users}
           onAddNew={() => {
             setRecordToEdit(null);
@@ -739,10 +787,21 @@ export default function App() {
           pending={statusStats.pending}
           onHold={statusStats.onHold}
           failed={statusStats.failed}
-          activeFilter={statusFilter}
+          activeFilter={activeView === 'on-hold' ? 'onHold' : activeView === 'completed' ? 'completed' : statusFilter}
           onSelectStatus={(st) => {
-            setActiveView('all');
-            setStatusFilter(st);
+            if (st === 'onHold') {
+              setActiveView('on-hold');
+              setStatusFilter('all');
+            } else if (st === 'completed') {
+              setActiveView('completed');
+              setStatusFilter('all');
+            } else if (st === 'pending') {
+              setActiveView('my-pending');
+              setStatusFilter('all');
+            } else {
+              setActiveView('all');
+              setStatusFilter(st);
+            }
           }}
         />
 
