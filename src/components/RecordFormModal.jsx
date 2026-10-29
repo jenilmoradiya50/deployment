@@ -13,13 +13,22 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
 
   useEffect(() => {
     if (recordToEdit) {
+      const hasBsnlIp = Boolean((recordToEdit.bsnlIp && recordToEdit.bsnlIp.trim()) || (recordToEdit.bsnlGateway && recordToEdit.bsnlGateway.trim()));
+      const hasJioIp = Boolean((recordToEdit.jioIp && recordToEdit.jioIp.trim()) || (recordToEdit.jioGateway && recordToEdit.jioGateway.trim()));
+      const hasAirtelIp = Boolean(
+        (recordToEdit.airtelIp && recordToEdit.airtelIp.trim()) ||
+        (recordToEdit.airtelGateway && recordToEdit.airtelGateway.trim()) ||
+        (recordToEdit.airtelLoopbackIp && recordToEdit.airtelLoopbackIp.trim()) ||
+        recordToEdit.airtelIs4G === 'Yes'
+      );
+
       setFormData({
         ...recordToEdit,
         deploymentStatus: recordToEdit.deploymentStatus || (recordToEdit.working === 'Yes' ? 'Completed' : (recordToEdit.working === 'No' ? 'Failed' : 'Pending')),
         isDhcp: recordToEdit.isDhcp || 'No',
-        bsnlPresent: recordToEdit.bsnlPresent || 'Yes',
-        jioPresent: recordToEdit.jioPresent || 'Yes',
-        airtelPresent: recordToEdit.airtelPresent || 'Yes',
+        bsnlPresent: hasBsnlIp ? (recordToEdit.bsnlPresent || 'Yes') : (recordToEdit.bsnlPresent === 'Yes' ? 'Yes' : 'No'),
+        jioPresent: hasJioIp ? (recordToEdit.jioPresent || 'Yes') : (recordToEdit.jioPresent === 'Yes' ? 'Yes' : 'No'),
+        airtelPresent: hasAirtelIp ? (recordToEdit.airtelPresent || 'Yes') : (recordToEdit.airtelPresent === 'Yes' ? 'Yes' : 'No'),
         airtelIs4G: recordToEdit.airtelIs4G || 'No',
         airtelLoopbackIp: recordToEdit.airtelLoopbackIp || ''
       });
@@ -47,9 +56,9 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
         isUnassigned: isPMOrAdmin,
         deploymentStatus: 'Pending',
         isDhcp: 'No',
-        bsnlPresent: 'Yes',
-        jioPresent: 'Yes',
-        airtelPresent: 'Yes',
+        bsnlPresent: 'No',
+        jioPresent: 'No',
+        airtelPresent: 'No',
         airtelIs4G: 'No',
         airtelLoopbackIp: '',
         vlanConfigured: 'No',
@@ -73,7 +82,32 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
   }, [recordToEdit, kind, currentUser]);
 
   const handleChange = (fieldId, val) => {
-    setFormData(prev => ({ ...prev, [fieldId]: val }));
+    setFormData(prev => {
+      const next = { ...prev, [fieldId]: val };
+
+      // Auto-toggle ISP Present checkmark based on IP
+      if (fieldId === 'bsnlIp' || fieldId === 'bsnlGateway') {
+        const bIp = fieldId === 'bsnlIp' ? val : (prev.bsnlIp || '');
+        const bGw = fieldId === 'bsnlGateway' ? val : (prev.bsnlGateway || '');
+        next.bsnlPresent = (bIp.trim() !== '' || bGw.trim() !== '') ? 'Yes' : 'No';
+      }
+
+      if (fieldId === 'jioIp' || fieldId === 'jioGateway') {
+        const jIp = fieldId === 'jioIp' ? val : (prev.jioIp || '');
+        const jGw = fieldId === 'jioGateway' ? val : (prev.jioGateway || '');
+        next.jioPresent = (jIp.trim() !== '' || jGw.trim() !== '') ? 'Yes' : 'No';
+      }
+
+      if (fieldId === 'airtelIp' || fieldId === 'airtelGateway' || fieldId === 'airtelLoopbackIp' || fieldId === 'airtelIs4G') {
+        const aIp = fieldId === 'airtelIp' ? val : (prev.airtelIp || '');
+        const aGw = fieldId === 'airtelGateway' ? val : (prev.airtelGateway || '');
+        const aLoop = fieldId === 'airtelLoopbackIp' ? val : (prev.airtelLoopbackIp || '');
+        const is4G = fieldId === 'airtelIs4G' ? val : (prev.airtelIs4G || 'No');
+        next.airtelPresent = (aIp.trim() !== '' || aGw.trim() !== '' || aLoop.trim() !== '' || is4G === 'Yes') ? 'Yes' : 'No';
+      }
+
+      return next;
+    });
     if (errorMsg) setErrorMsg('');
   };
 
@@ -820,179 +854,176 @@ export default function RecordFormModal({ kind = 'Branch', recordToEdit, current
               <div className="form-section-card">
                 <div className="form-section-header">
                   <span className="sec-icon">⚡</span>
-                  <h4>BSNL Circuit</h4>
+                  <div>
+                    <h4>BSNL Circuit</h4>
+                    {formData.bsnlPresent !== 'Yes' && (
+                      <span className="isp-off-subhint">⚪ Off (Not Present) — enter IP below to activate</span>
+                    )}
+                  </div>
                   <div className="isp-availability-toggle">
                     <label className="isp-toggle-label">
                       <input
                         type="checkbox"
-                        checked={formData.bsnlPresent !== 'No'}
+                        checked={formData.bsnlPresent === 'Yes'}
                         onChange={(e) => handleChange('bsnlPresent', e.target.checked ? 'Yes' : 'No')}
                       />
-                      <span>{formData.bsnlPresent !== 'No' ? 'Present at Site' : 'Not Present (N/A)'}</span>
+                      <span>{formData.bsnlPresent === 'Yes' ? '☑️ Present at Site' : '⚪ Not Present (Off)'}</span>
                     </label>
                   </div>
                 </div>
 
-                {formData.bsnlPresent === 'No' ? (
-                  <div className="isp-not-present-notice">
-                    ⚪ BSNL circuit is not present at this branch.
+                <div className="form-fields-grid">
+                  <div className="modal-form-field">
+                    <label htmlFor="f_bsnlIp" className="field-title">BSNL IP</label>
+                    <input
+                      id="f_bsnlIp"
+                      type="text"
+                      className="field-input ip-code"
+                      placeholder="e.g. 192.168.10.2 (Enter IP to enable)"
+                      value={formData.bsnlIp || ''}
+                      onChange={(e) => handleChange('bsnlIp', e.target.value)}
+                    />
                   </div>
-                ) : (
-                  <div className="form-fields-grid">
-                    <div className="modal-form-field">
-                      <label htmlFor="f_bsnlIp" className="field-title">BSNL IP</label>
-                      <input
-                        id="f_bsnlIp"
-                        type="text"
-                        className="field-input ip-code"
-                        placeholder="e.g. 192.168.10.2"
-                        value={formData.bsnlIp || ''}
-                        onChange={(e) => handleChange('bsnlIp', e.target.value)}
-                      />
-                    </div>
-                    <div className="modal-form-field">
-                      <label htmlFor="f_bsnlGateway" className="field-title">BSNL Gateway</label>
-                      <input
-                        id="f_bsnlGateway"
-                        type="text"
-                        className="field-input ip-code"
-                        placeholder="e.g. 192.168.10.1"
-                        value={formData.bsnlGateway || ''}
-                        onChange={(e) => handleChange('bsnlGateway', e.target.value)}
-                      />
-                    </div>
-                    {renderRadioPill('bsnlPing', 'BSNL IP Pinging?', ['Yes', 'No'])}
+                  <div className="modal-form-field">
+                    <label htmlFor="f_bsnlGateway" className="field-title">BSNL Gateway</label>
+                    <input
+                      id="f_bsnlGateway"
+                      type="text"
+                      className="field-input ip-code"
+                      placeholder="e.g. 192.168.10.1"
+                      value={formData.bsnlGateway || ''}
+                      onChange={(e) => handleChange('bsnlGateway', e.target.value)}
+                    />
                   </div>
-                )}
+                  {renderRadioPill('bsnlPing', 'BSNL IP Pinging?', ['Yes', 'No'])}
+                </div>
               </div>
 
               {/* 7. JIO CONNECTIVITY */}
               <div className="form-section-card">
                 <div className="form-section-header">
                   <span className="sec-icon">⚡</span>
-                  <h4>Jio Circuit</h4>
+                  <div>
+                    <h4>Jio Circuit</h4>
+                    {formData.jioPresent !== 'Yes' && (
+                      <span className="isp-off-subhint">⚪ Off (Not Present) — enter IP below to activate</span>
+                    )}
+                  </div>
                   <div className="isp-availability-toggle">
                     <label className="isp-toggle-label">
                       <input
                         type="checkbox"
-                        checked={formData.jioPresent !== 'No'}
+                        checked={formData.jioPresent === 'Yes'}
                         onChange={(e) => handleChange('jioPresent', e.target.checked ? 'Yes' : 'No')}
                       />
-                      <span>{formData.jioPresent !== 'No' ? 'Present at Site' : 'Not Present (N/A)'}</span>
+                      <span>{formData.jioPresent === 'Yes' ? '☑️ Present at Site' : '⚪ Not Present (Off)'}</span>
                     </label>
                   </div>
                 </div>
 
-                {formData.jioPresent === 'No' ? (
-                  <div className="isp-not-present-notice">
-                    ⚪ Jio circuit is not present at this branch.
+                <div className="form-fields-grid">
+                  <div className="modal-form-field">
+                    <label htmlFor="f_jioIp" className="field-title">Jio IP</label>
+                    <input
+                      id="f_jioIp"
+                      type="text"
+                      className="field-input ip-code"
+                      placeholder="e.g. 172.16.20.2 (Enter IP to enable)"
+                      value={formData.jioIp || ''}
+                      onChange={(e) => handleChange('jioIp', e.target.value)}
+                    />
                   </div>
-                ) : (
-                  <div className="form-fields-grid">
-                    <div className="modal-form-field">
-                      <label htmlFor="f_jioIp" className="field-title">Jio IP</label>
-                      <input
-                        id="f_jioIp"
-                        type="text"
-                        className="field-input ip-code"
-                        placeholder="e.g. 172.16.20.2"
-                        value={formData.jioIp || ''}
-                        onChange={(e) => handleChange('jioIp', e.target.value)}
-                      />
-                    </div>
-                    <div className="modal-form-field">
-                      <label htmlFor="f_jioGateway" className="field-title">Jio Gateway</label>
-                      <input
-                        id="f_jioGateway"
-                        type="text"
-                        className="field-input ip-code"
-                        placeholder="e.g. 172.16.20.1"
-                        value={formData.jioGateway || ''}
-                        onChange={(e) => handleChange('jioGateway', e.target.value)}
-                      />
-                    </div>
-                    {renderRadioPill('jioPing', 'Jio IP Pinging?', ['Yes', 'No'])}
+                  <div className="modal-form-field">
+                    <label htmlFor="f_jioGateway" className="field-title">Jio Gateway</label>
+                    <input
+                      id="f_jioGateway"
+                      type="text"
+                      className="field-input ip-code"
+                      placeholder="e.g. 172.16.20.1"
+                      value={formData.jioGateway || ''}
+                      onChange={(e) => handleChange('jioGateway', e.target.value)}
+                    />
                   </div>
-                )}
+                  {renderRadioPill('jioPing', 'Jio IP Pinging?', ['Yes', 'No'])}
+                </div>
               </div>
 
               {/* 8. AIRTEL CONNECTIVITY (4G Loopback IP Support, CE Removed) */}
               <div className="form-section-card">
                 <div className="form-section-header">
                   <span className="sec-icon">⚡</span>
-                  <h4>Airtel Circuit</h4>
+                  <div>
+                    <h4>Airtel Circuit</h4>
+                    {formData.airtelPresent !== 'Yes' && (
+                      <span className="isp-off-subhint">⚪ Off (Not Present) — enter IP below to activate</span>
+                    )}
+                  </div>
                   <div className="isp-availability-toggle">
                     <label className="isp-toggle-label">
                       <input
                         type="checkbox"
-                        checked={formData.airtelPresent !== 'No'}
+                        checked={formData.airtelPresent === 'Yes'}
                         onChange={(e) => handleChange('airtelPresent', e.target.checked ? 'Yes' : 'No')}
                       />
-                      <span>{formData.airtelPresent !== 'No' ? 'Present at Site' : 'Not Present (N/A)'}</span>
+                      <span>{formData.airtelPresent === 'Yes' ? '☑️ Present at Site' : '⚪ Not Present (Off)'}</span>
                     </label>
                   </div>
                 </div>
 
-                {formData.airtelPresent === 'No' ? (
-                  <div className="isp-not-present-notice">
-                    ⚪ Airtel circuit is not present at this branch.
+                <div className="form-fields-grid">
+                  {/* Airtel 4G Option */}
+                  <div className="modal-form-field full airtel-4g-toggle-card">
+                    <label className="checkbox-control-label">
+                      <input
+                        type="checkbox"
+                        checked={formData.airtelIs4G === 'Yes'}
+                        onChange={(e) => handleChange('airtelIs4G', e.target.checked ? 'Yes' : 'No')}
+                      />
+                      <span><strong>📶 Airtel is a 4G Connection</strong></span>
+                    </label>
                   </div>
-                ) : (
-                  <div className="form-fields-grid">
-                    {/* Airtel 4G Option */}
-                    <div className="modal-form-field full airtel-4g-toggle-card">
-                      <label className="checkbox-control-label">
-                        <input
-                          type="checkbox"
-                          checked={formData.airtelIs4G === 'Yes'}
-                          onChange={(e) => handleChange('airtelIs4G', e.target.checked ? 'Yes' : 'No')}
-                        />
-                        <span><strong>📶 Airtel is a 4G Connection</strong></span>
+
+                  {/* Loopback IP (if 4G) */}
+                  {formData.airtelIs4G === 'Yes' && (
+                    <div className="modal-form-field full loopback-field-highlight">
+                      <label htmlFor="f_airtelLoopbackIp" className="field-title required">
+                        Airtel 4G Loopback IP
                       </label>
-                    </div>
-
-                    {/* Loopback IP (if 4G) */}
-                    {formData.airtelIs4G === 'Yes' && (
-                      <div className="modal-form-field full loopback-field-highlight">
-                        <label htmlFor="f_airtelLoopbackIp" className="field-title required">
-                          Airtel 4G Loopback IP
-                        </label>
-                        <input
-                          id="f_airtelLoopbackIp"
-                          type="text"
-                          className="field-input ip-code primary-highlight-input"
-                          placeholder="e.g. 10.200.12.1"
-                          value={formData.airtelLoopbackIp || ''}
-                          onChange={(e) => handleChange('airtelLoopbackIp', e.target.value)}
-                        />
-                      </div>
-                    )}
-
-                    <div className="modal-form-field">
-                      <label htmlFor="f_airtelIp" className="field-title">Airtel IP</label>
                       <input
-                        id="f_airtelIp"
+                        id="f_airtelLoopbackIp"
                         type="text"
-                        className="field-input ip-code"
-                        placeholder="e.g. 10.100.5.2"
-                        value={formData.airtelIp || ''}
-                        onChange={(e) => handleChange('airtelIp', e.target.value)}
+                        className="field-input ip-code primary-highlight-input"
+                        placeholder="e.g. 10.200.12.1"
+                        value={formData.airtelLoopbackIp || ''}
+                        onChange={(e) => handleChange('airtelLoopbackIp', e.target.value)}
                       />
                     </div>
-                    <div className="modal-form-field">
-                      <label htmlFor="f_airtelGateway" className="field-title">Airtel Gateway</label>
-                      <input
-                        id="f_airtelGateway"
-                        type="text"
-                        className="field-input ip-code"
-                        placeholder="e.g. 10.100.5.1"
-                        value={formData.airtelGateway || ''}
-                        onChange={(e) => handleChange('airtelGateway', e.target.value)}
-                      />
-                    </div>
-                    {renderRadioPill('airtelPing', 'Airtel IP Pinging?', ['Yes', 'No'])}
+                  )}
+
+                  <div className="modal-form-field">
+                    <label htmlFor="f_airtelIp" className="field-title">Airtel IP</label>
+                    <input
+                      id="f_airtelIp"
+                      type="text"
+                      className="field-input ip-code"
+                      placeholder="e.g. 10.100.5.2 (Enter IP to enable)"
+                      value={formData.airtelIp || ''}
+                      onChange={(e) => handleChange('airtelIp', e.target.value)}
+                    />
                   </div>
-                )}
+                  <div className="modal-form-field">
+                    <label htmlFor="f_airtelGateway" className="field-title">Airtel Gateway</label>
+                    <input
+                      id="f_airtelGateway"
+                      type="text"
+                      className="field-input ip-code"
+                      placeholder="e.g. 10.100.5.1"
+                      value={formData.airtelGateway || ''}
+                      onChange={(e) => handleChange('airtelGateway', e.target.value)}
+                    />
+                  </div>
+                  {renderRadioPill('airtelPing', 'Airtel IP Pinging?', ['Yes', 'No'])}
+                </div>
               </div>
 
               {/* 9. CONFIGURATION & HANDOVER CHECKLIST */}
