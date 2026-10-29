@@ -23,6 +23,14 @@ export default function RecordFormModal({
   const autoSaveTimerRef = useRef(null);
   const currentRecordIdRef = useRef(recordToEdit?.id || null);
 
+  // Status transitions & reason confirmation states
+  const [showCompletedConfirmModal, setShowCompletedConfirmModal] = useState(false);
+  const [statusReasonModal, setStatusReasonModal] = useState({
+    isOpen: false,
+    targetStatus: '',
+    reason: ''
+  });
+
   const currentKind = formData.kind || (recordToEdit ? recordToEdit.kind : (kind === 'All' ? 'Branch' : kind));
   const isBranch = currentKind === 'Branch';
 
@@ -226,6 +234,70 @@ export default function RecordFormModal({
     if (errorMsg) setErrorMsg('');
   };
 
+  // Status transitions & Reason Prompt handlers
+  const handleStatusPillChange = (targetStatus) => {
+    if (targetStatus === 'On Hold' || targetStatus === 'Failed') {
+      setStatusReasonModal({
+        isOpen: true,
+        targetStatus,
+        reason: ''
+      });
+      return;
+    }
+
+    if (targetStatus === 'Completed') {
+      setFormData(prev => {
+        const next = { ...prev, deploymentStatus: 'Completed', working: 'Yes' };
+        scheduleAutoSave(next, secondaryIps, true);
+        return next;
+      });
+      return;
+    }
+
+    // Pending
+    setFormData(prev => {
+      const next = { ...prev, deploymentStatus: targetStatus };
+      scheduleAutoSave(next, secondaryIps, true);
+      return next;
+    });
+  };
+
+  const handleConfirmStatusReason = () => {
+    const { targetStatus, reason } = statusReasonModal;
+    if (!reason || !reason.trim()) return;
+
+    const timeStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'short' });
+    const tag = `[${targetStatus} Reason - ${timeStr}]: ${reason.trim()}`;
+    const nextNotes = formData.notes ? `${formData.notes}\n${tag}` : tag;
+
+    setFormData(prev => {
+      const next = {
+        ...prev,
+        deploymentStatus: targetStatus,
+        working: targetStatus === 'Completed' ? 'Yes' : 'No',
+        notes: nextNotes
+      };
+      scheduleAutoSave(next, secondaryIps, true);
+      return next;
+    });
+
+    setStatusReasonModal({ isOpen: false, targetStatus: '', reason: '' });
+  };
+
+  // Confirmation when user selects 'Yes' for Site working fine
+  const handleWorkingChange = (opt) => {
+    if (opt === 'Yes') {
+      const currentStatus = formData.deploymentStatus || 'Pending';
+      if (currentStatus !== 'Completed') {
+        setShowCompletedConfirmModal(true);
+      } else {
+        handleChange('working', 'Yes', true);
+      }
+    } else {
+      handleChange('working', 'No', true);
+    }
+  };
+
   // Secondary LAN Gateway handlers (Limit: 3)
   const handleAddSecondaryIp = () => {
     if (secondaryIps.length >= 3) return;
@@ -325,7 +397,7 @@ export default function RecordFormModal({
     }
   };
 
-  const renderRadioPill = (fieldId, label, options) => {
+  const renderRadioPill = (fieldId, label, options, customOnChange = null) => {
     const value = formData[fieldId] ?? options[1] ?? 'No';
     return (
       <div key={fieldId} className="modal-form-field">
@@ -343,7 +415,13 @@ export default function RecordFormModal({
                   name={fieldId}
                   value={opt}
                   checked={isChecked}
-                  onChange={() => handleChange(fieldId, opt, true)}
+                  onChange={() => {
+                    if (customOnChange) {
+                      customOnChange(opt);
+                    } else {
+                      handleChange(fieldId, opt, true);
+                    }
+                  }}
                 />
                 <span>{opt}</span>
               </label>
@@ -630,7 +708,7 @@ export default function RecordFormModal({
                               name="deploymentStatus"
                               value={st}
                               checked={isChecked}
-                              onChange={() => handleChange('deploymentStatus', st)}
+                              onChange={() => handleStatusPillChange(st)}
                             />
                             <span>
                               {st === 'Completed' ? '🟢 ' : st === 'Pending' ? '⏳ ' : st === 'On Hold' ? '🟡 ' : '🔴 '}
@@ -1170,7 +1248,7 @@ export default function RecordFormModal({
                   {renderRadioPill('dcDrReply', 'DC / DR Reply Received?', ['Received', 'Not received'])}
                   {renderRadioPill('cablesConnected', 'ISP & LAN Cables Connected?', ['Connected', 'Not connected'])}
                   {renderRadioPill('uatSubmitted', 'UAT Form Given?', ['Yes', 'No'])}
-                  {renderRadioPill('working', 'Is Site Operational & Working?', ['Yes', 'No'])}
+                  {renderRadioPill('working', 'Is Site Operational & Working?', ['Yes', 'No'], handleWorkingChange)}
                 </div>
               </div>
 
@@ -1237,6 +1315,100 @@ export default function RecordFormModal({
             )}
           </div>
         </form>
+
+        {/* Modal: Confirm if Site is Completed when marked Working */}
+        {showCompletedConfirmModal && (
+          <div className="sub-modal-backdrop" onClick={() => setShowCompletedConfirmModal(false)}>
+            <div className="sub-modal-card" onClick={(e) => e.stopPropagation()}>
+              <div className="sub-modal-header">
+                <span className="sub-modal-icon">✅</span>
+                <h3>Is Site Completed?</h3>
+              </div>
+              <p className="sub-modal-text">
+                You marked <strong>Is Site Operational & Working?</strong> as <strong>Yes</strong>.
+                <br /><br />
+                Would you like to move this site deployment status to <strong>Completed</strong>?
+              </p>
+              <div className="sub-modal-actions">
+                <button
+                  type="button"
+                  className="sub-modal-btn primary"
+                  onClick={() => {
+                    setFormData(prev => {
+                      const next = { ...prev, working: 'Yes', deploymentStatus: 'Completed' };
+                      scheduleAutoSave(next, secondaryIps, true);
+                      return next;
+                    });
+                    setShowCompletedConfirmModal(false);
+                  }}
+                >
+                  ✓ Yes, Move to Completed
+                </button>
+                <button
+                  type="button"
+                  className="sub-modal-btn secondary"
+                  onClick={() => {
+                    setFormData(prev => {
+                      const next = { ...prev, working: 'Yes' };
+                      scheduleAutoSave(next, secondaryIps, true);
+                      return next;
+                    });
+                    setShowCompletedConfirmModal(false);
+                  }}
+                >
+                  No, Keep as {formData.deploymentStatus || 'Pending'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Reason Prompt for On Hold / Failed */}
+        {statusReasonModal.isOpen && (
+          <div className="sub-modal-backdrop" onClick={() => setStatusReasonModal({ isOpen: false, targetStatus: '', reason: '' })}>
+            <div className="sub-modal-card" onClick={(e) => e.stopPropagation()}>
+              <div className="sub-modal-header">
+                <span className="sub-modal-icon">{statusReasonModal.targetStatus === 'Failed' ? '🔴' : '🟡'}</span>
+                <h3>Reason for {statusReasonModal.targetStatus}</h3>
+              </div>
+              <p className="sub-modal-text">
+                Please enter the reason or issue details for placing this site on <strong>{statusReasonModal.targetStatus}</strong>.
+              </p>
+              <textarea
+                className="field-input reason-textarea"
+                rows="4"
+                placeholder={
+                  statusReasonModal.targetStatus === 'On Hold'
+                    ? "e.g. Branch power restoration pending, customer requested night slot, awaiting switch access..."
+                    : "e.g. SD-WAN port hardware failure, ping failed across all circuits, customer rejected UAT..."
+                }
+                value={statusReasonModal.reason}
+                onChange={(e) => setStatusReasonModal(prev => ({ ...prev, reason: e.target.value }))}
+                autoFocus
+              />
+              <span className="reason-subhint">
+                📝 This reason will be automatically saved and displayed in <strong>Engineering Notes</strong>.
+              </span>
+              <div className="sub-modal-actions">
+                <button
+                  type="button"
+                  className={`sub-modal-btn ${statusReasonModal.targetStatus === 'Failed' ? 'danger' : 'warning'}`}
+                  disabled={!statusReasonModal.reason.trim()}
+                  onClick={handleConfirmStatusReason}
+                >
+                  ✓ Confirm & Apply Status
+                </button>
+                <button
+                  type="button"
+                  className="sub-modal-btn secondary"
+                  onClick={() => setStatusReasonModal({ isOpen: false, targetStatus: '', reason: '' })}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

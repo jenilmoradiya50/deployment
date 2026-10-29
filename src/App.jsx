@@ -303,12 +303,51 @@ export default function App() {
     }
   };
 
+  // Reason modal for Hold / Failed status transitions
+  const [statusReasonModal, setStatusReasonModal] = useState({
+    isOpen: false,
+    recordId: null,
+    targetStatus: '',
+    siteIdentifier: '',
+    reason: ''
+  });
+
   // Fast Status Transition Handler (Completed, Pending, On Hold, Failed)
   const handleStatusChange = async (recordId, newStatus) => {
+    if (newStatus === 'On Hold' || newStatus === 'Failed') {
+      const rec = records.find(r => r.id === recordId);
+      const ident = rec ? (rec.kind === 'ATM' ? `${rec.atmId} (${rec.dpCode || 'ATM'})` : (rec.dpCode || 'Site')) : 'Site';
+      setStatusReasonModal({
+        isOpen: true,
+        recordId,
+        targetStatus: newStatus,
+        siteIdentifier: ident,
+        reason: ''
+      });
+      return;
+    }
+
     try {
       const res = await api.updateRecordStatus(recordId, newStatus);
       setRecords(prev => prev.map(r => r.id === recordId ? res.record : r));
       showToast(`Site status updated to "${newStatus}"!`);
+    } catch (err) {
+      showToast('Could not update status: ' + err.message, 'error');
+    }
+  };
+
+  const handleConfirmStatusWithReason = async () => {
+    const { recordId, targetStatus, reason } = statusReasonModal;
+    if (!reason || !reason.trim()) {
+      showToast('Please enter a reason before proceeding', 'error');
+      return;
+    }
+
+    try {
+      const res = await api.updateRecordStatus(recordId, targetStatus, reason.trim());
+      setRecords(prev => prev.map(r => r.id === recordId ? res.record : r));
+      showToast(`Site marked as "${targetStatus}". Reason saved in Engineering Notes!`);
+      setStatusReasonModal({ isOpen: false, recordId: null, targetStatus: '', siteIdentifier: '', reason: '' });
     } catch (err) {
       showToast('Could not update status: ' + err.message, 'error');
     }
@@ -768,6 +807,70 @@ export default function App() {
         onExportFilteredCSV={handleExportFilteredCSV}
         onExportAllJSON={handleExportAll}
       />
+
+      {/* Reason for Hold / Failed Prompt Modal */}
+      {statusReasonModal.isOpen && (
+        <div className="modal-overlay" onClick={() => setStatusReasonModal(prev => ({ ...prev, isOpen: false }))}>
+          <div className="modal-window reason-prompt-window" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-form-header">
+              <div className="header-badge-title">
+                <span className={`modal-tag ${statusReasonModal.targetStatus === 'Failed' ? 'tag-failed' : 'tag-hold'}`}>
+                  {statusReasonModal.targetStatus === 'Failed' ? '🔴 FAILED STATUS' : '🟡 ON HOLD STATUS'}
+                </span>
+                <h2>Reason for Setting Site {statusReasonModal.targetStatus}</h2>
+              </div>
+              <button
+                type="button"
+                className="modal-close-button"
+                onClick={() => setStatusReasonModal(prev => ({ ...prev, isOpen: false }))}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="reason-modal-body">
+              <p className="reason-modal-site-ref">
+                Site: <strong>{statusReasonModal.siteIdentifier}</strong>
+              </p>
+              <label className="field-title required">
+                Please enter the reason for placing this site on {statusReasonModal.targetStatus}:
+              </label>
+              <textarea
+                className="field-input reason-textarea"
+                rows="4"
+                placeholder={
+                  statusReasonModal.targetStatus === 'On Hold'
+                    ? "e.g. Awaiting customer power supply, ISP link activation delayed, FE waiting for switch port access..."
+                    : "e.g. SD-WAN router boot failure, ping failed across all circuits, customer rejected UAT..."
+                }
+                value={statusReasonModal.reason}
+                onChange={(e) => setStatusReasonModal(prev => ({ ...prev, reason: e.target.value }))}
+                autoFocus
+                required
+              />
+              <span className="reason-subhint">
+                📝 This reason will be automatically timestamped and appended to the <strong>Engineering Remarks / Notes</strong> for this site.
+              </span>
+            </div>
+            <div className="modal-form-footer">
+              <button
+                type="button"
+                className={`save-btn ${statusReasonModal.targetStatus === 'Failed' ? 'btn-danger' : 'btn-warning'}`}
+                onClick={handleConfirmStatusWithReason}
+                disabled={!statusReasonModal.reason.trim()}
+              >
+                ✓ Confirm & Move to {statusReasonModal.targetStatus}
+              </button>
+              <button
+                type="button"
+                className="cancel-btn"
+                onClick={() => setStatusReasonModal(prev => ({ ...prev, isOpen: false }))}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Modal */}
       {recordToDelete && (

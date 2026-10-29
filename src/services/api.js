@@ -257,11 +257,11 @@ export const api = {
   },
 
   // Records: Quick Status Update (Completed, Pending, On Hold, Failed)
-  async updateRecordStatus(id, status) {
+  async updateRecordStatus(id, status, reason = '') {
     const res = await fetch(`${API_BASE}/records/${id}/status`, {
       method: 'PATCH',
       headers: authHeaders(),
-      body: JSON.stringify({ status })
+      body: JSON.stringify({ status, reason })
     });
 
     if (res.status === 401) {

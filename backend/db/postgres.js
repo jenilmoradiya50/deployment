@@ -1235,13 +1235,20 @@ const db = {
   },
 
   // Fast Status Updater: Pending, Completed, On Hold, Failed
-  async updateRecordStatus(id, status, user = {}) {
+  async updateRecordStatus(id, status, user = {}, reason = '') {
     const valid = ['Pending', 'Completed', 'On Hold', 'Failed'];
     if (!valid.includes(status)) {
       throw new Error(`Invalid status: ${status}. Must be one of: ${valid.join(', ')}`);
     }
     const working = status === 'Completed' ? 'Yes' : (status === 'Failed' ? 'No' : 'No');
-    return this.updateRecord(id, { deploymentStatus: status, working }, user);
+    const existing = await this.getRecordById(id);
+    let newNotes = existing ? (existing.notes || '') : '';
+    if (reason && String(reason).trim()) {
+      const timeStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'short' });
+      const reasonTag = `[${status} Reason - ${timeStr}]: ${String(reason).trim()}`;
+      newNotes = newNotes ? `${newNotes}\n${reasonTag}` : reasonTag;
+    }
+    return this.updateRecord(id, { deploymentStatus: status, working, notes: newNotes }, user);
   },
 
   // Records: Delete

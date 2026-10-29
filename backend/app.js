@@ -322,7 +322,7 @@ app.put('/api/records/:id', authMiddleware, async (req, res) => {
 // Fast Deployment Status Update: Completed, Pending, On Hold, Failed
 app.patch('/api/records/:id/status', authMiddleware, async (req, res) => {
   try {
-    const { status } = req.body || {};
+    const { status, reason } = req.body || {};
     if (!status) return res.status(400).json({ error: 'Status is required' });
 
     const existing = await db.getRecordById(req.params.id);
@@ -345,7 +345,7 @@ app.patch('/api/records/:id/status', authMiddleware, async (req, res) => {
       });
     }
 
-    const updated = await db.updateRecordStatus(req.params.id, status, req.user);
+    const updated = await db.updateRecordStatus(req.params.id, status, req.user, reason);
     if (!updated) return res.status(404).json({ error: 'Record not found' });
     res.json({ message: `Site status updated to ${status}`, record: updated });
   } catch (err) {

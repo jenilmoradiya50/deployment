@@ -403,6 +403,63 @@ export default function RecordCard({
             )}
           </div>
 
+          {/* Inside Status Control Section */}
+          <div className="expanded-status-control-strip">
+            <div className="expanded-status-left">
+              <span className="expanded-status-lbl">Deployment Status:</span>
+              <span className={`status-pill status-${status.toLowerCase().replace(' ', '-')}`}>
+                {status === 'Completed' ? '🟢 Completed' : status === 'On Hold' ? '🟡 On Hold' : status === 'Failed' ? '🔴 Failed' : '⏳ Pending'}
+              </span>
+            </div>
+            {canEdit && (
+              <div className="expanded-status-actions" onClick={(e) => e.stopPropagation()}>
+                <span className="actions-prefix">Change Status:</span>
+                <div className="card-status-quick-buttons">
+                  {!isCompleted && (
+                    <button
+                      type="button"
+                      className="status-action-btn complete-btn"
+                      onClick={() => onStatusChange && onStatusChange(record.id, 'Completed')}
+                      title="Mark site deployment as Completed"
+                    >
+                      ✓ Completed
+                    </button>
+                  )}
+                  {!isOnHold && (
+                    <button
+                      type="button"
+                      className="status-action-btn hold-btn"
+                      onClick={() => onStatusChange && onStatusChange(record.id, 'On Hold')}
+                      title="Put site deployment on Hold"
+                    >
+                      ⏸ Hold
+                    </button>
+                  )}
+                  {!isFailed && (
+                    <button
+                      type="button"
+                      className="status-action-btn fail-btn"
+                      onClick={() => onStatusChange && onStatusChange(record.id, 'Failed')}
+                      title="Mark site deployment as Failed / Issue"
+                    >
+                      ✕ Failed
+                    </button>
+                  )}
+                  {!isPending && (
+                    <button
+                      type="button"
+                      className="status-action-btn pending-btn"
+                      onClick={() => onStatusChange && onStatusChange(record.id, 'Pending')}
+                      title="Shift site back to Pending queue"
+                    >
+                      ↺ Pending
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Hardware & Physical Details */}
           <div className="site-section-panel hardware-panel">
             <div className="panel-header-sub">
