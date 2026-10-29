@@ -297,6 +297,9 @@ export default function RecordCard({
 
         {/* ISP Status Pills in Compact View */}
         <div className="compact-circuits-row">
+          <span className="circuit-mini-badge source-badge" title={`Source of IP Details: ${record.ipSource || 'Sheet'}`}>
+            📂 {record.ipSource || 'Sheet'}
+          </span>
           {record.isDhcp === 'Yes' && (
             <span className="circuit-mini-badge dhcp-badge" title="Branch utilizes DHCP for IP configuration">
               📶 DHCP
@@ -431,6 +434,7 @@ export default function RecordCard({
           <div className="site-section-panel lan-panel">
             <div className="panel-header-sub">
               <span>LAN Gateway & Subnets</span>
+              <span className="source-pill-badge" title="Source of IP details">📂 IP Source: <strong>{record.ipSource || 'Sheet'}</strong></span>
               {record.isDhcp === 'Yes' && (
                 <span className="dhcp-pill-badge">📶 DHCP Enabled</span>
               )}
@@ -593,14 +597,8 @@ export default function RecordCard({
               <span className={`check-chip ${record.uatSubmitted === 'Yes' ? 'done' : 'pending'}`}>
                 UAT Form: {record.uatSubmitted === 'Yes' ? 'Given' : 'Pending'}
               </span>
-              <span className={`check-chip ${record.mailSent === 'Yes' ? 'done' : 'pending'}`}>
-                Handover Mail: {record.mailSent || 'No'}
-              </span>
-              <span className={`check-chip ${record.dcMail === 'Received' ? 'done' : 'pending'}`}>
-                DC Mail: {record.dcMail || 'Not received'}
-              </span>
-              <span className={`check-chip ${record.drcMail === 'Received' ? 'done' : 'pending'}`}>
-                DRC Mail: {record.drcMail || 'Not received'}
+              <span className={`check-chip ${(record.dcDrReply === 'Received' || record.dcMail === 'Received' || record.drcMail === 'Received') ? 'done' : 'pending'}`}>
+                DC/DR Reply: {(record.dcDrReply || (record.dcMail === 'Received' || record.drcMail === 'Received' ? 'Received' : 'Not received'))}
               </span>
             </div>
           </div>

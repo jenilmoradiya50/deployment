@@ -51,6 +51,8 @@ export default function RecordFormModal({
 
       setFormData({
         ...recordToEdit,
+        ipSource: recordToEdit.ipSource || 'Sheet',
+        dcDrReply: recordToEdit.dcDrReply || (recordToEdit.dcMail === 'Received' || recordToEdit.drcMail === 'Received' ? 'Received' : 'Not received'),
         deploymentStatus: recordToEdit.deploymentStatus || (recordToEdit.working === 'Yes' ? 'Completed' : (recordToEdit.working === 'No' ? 'Failed' : 'Pending')),
         isDhcp: recordToEdit.isDhcp || 'No',
         bsnlPresent: hasBsnlIp ? (recordToEdit.bsnlPresent || 'Yes') : (recordToEdit.bsnlPresent === 'Yes' ? 'Yes' : 'No'),
@@ -93,12 +95,11 @@ export default function RecordFormModal({
         bsnlPing: 'No',
         jioPing: 'No',
         airtelPing: 'No',
+        ipSource: 'Sheet',
+        dcDrReply: 'Not received',
         configuration: 'Not completed',
         mpAdded: 'No',
         deviceOnline: 'No',
-        mailSent: 'No',
-        dcMail: 'Not received',
-        drcMail: 'Not received',
         cablesConnected: 'Not connected',
         working: 'No',
         uatSubmitted: 'No'
@@ -117,6 +118,8 @@ export default function RecordFormModal({
       ...currentForm,
       id: currentRecordIdRef.current || currentForm.id,
       kind: currentForm.kind || (isBranch ? 'Branch' : 'ATM'),
+      ipSource: currentForm.ipSource || 'Sheet',
+      dcDrReply: currentForm.dcDrReply || 'Not received',
       deploymentStatus: status,
       working,
       bsnlPresent: currentForm.bsnlPresent === 'Yes' ? 'Yes' : 'No',
@@ -818,7 +821,18 @@ export default function RecordFormModal({
                 </div>
               </div>
 
-              {/* 4. VLAN CONFIGURATION */}
+              {/* 4. SOURCE OF IP DETAILS */}
+              <div className="form-section-card ip-source-section-card">
+                <div className="form-section-header">
+                  <span className="sec-icon">📂</span>
+                  <h4>Source of IP Details</h4>
+                </div>
+                <div className="form-fields-grid">
+                  {renderRadioPill('ipSource', 'Where were IP details obtained from?', ['Sheet', 'NCCM', 'Mail'])}
+                </div>
+              </div>
+
+              {/* 5. VLAN CONFIGURATION */}
               <div className="form-section-card">
                 <div className="form-section-header">
                   <span className="sec-icon">🔀</span>
@@ -1153,9 +1167,7 @@ export default function RecordFormModal({
                   {renderRadioPill('configuration', 'Configuration Status', ['Completed', 'Not completed'])}
                   {renderRadioPill('mpAdded', 'Device Added in CS?', ['Yes', 'No'])}
                   {renderRadioPill('deviceOnline', 'Device Online?', ['Yes', 'No'])}
-                  {renderRadioPill('mailSent', 'Handover Mail Sent?', ['Yes', 'No'])}
-                  {renderRadioPill('dcMail', 'Mail from DC', ['Received', 'Not received'])}
-                  {renderRadioPill('drcMail', 'Mail from DRC', ['Received', 'Not received'])}
+                  {renderRadioPill('dcDrReply', 'DC / DR Reply Received?', ['Received', 'Not received'])}
                   {renderRadioPill('cablesConnected', 'ISP & LAN Cables Connected?', ['Connected', 'Not connected'])}
                   {renderRadioPill('uatSubmitted', 'UAT Form Given?', ['Yes', 'No'])}
                   {renderRadioPill('working', 'Is Site Operational & Working?', ['Yes', 'No'])}

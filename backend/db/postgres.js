@@ -84,6 +84,8 @@ let memRecords = [
     mail_sent: 'Yes',
     dc_mail: 'Received',
     drc_mail: 'Received',
+    dc_dr_reply: 'Received',
+    ip_source: 'Sheet',
     cables_connected: 'Connected',
     working: 'Yes',
     uat_submitted: 'Yes',
@@ -217,6 +219,8 @@ function formatRecordRow(row) {
     mailSent: row.mail_sent || 'No',
     dcMail: row.dc_mail || 'Not received',
     drcMail: row.drc_mail || 'Not received',
+    dcDrReply: row.dc_dr_reply || (row.dc_mail === 'Received' || row.drc_mail === 'Received' ? 'Received' : 'Not received'),
+    ipSource: row.ip_source || 'Sheet',
     cablesConnected: row.cables_connected || 'Not connected',
     working: row.working || 'No',
     deploymentStatus: row.deployment_status || (row.working === 'Yes' ? 'Completed' : (row.working === 'No' ? 'Failed' : 'Pending')),
@@ -307,6 +311,8 @@ async function initDatabase() {
             mail_sent VARCHAR(10) DEFAULT 'No',
             dc_mail VARCHAR(30) DEFAULT 'Not received',
             drc_mail VARCHAR(30) DEFAULT 'Not received',
+            dc_dr_reply VARCHAR(30) DEFAULT 'Not received',
+            ip_source VARCHAR(50) DEFAULT 'Sheet',
             cables_connected VARCHAR(30) DEFAULT 'Not connected',
             working VARCHAR(10) DEFAULT 'No',
             uat_submitted VARCHAR(10) DEFAULT 'No',
@@ -336,12 +342,15 @@ async function initDatabase() {
           ALTER TABLE records ADD COLUMN IF NOT EXISTS airtel_present VARCHAR(10) DEFAULT 'Yes';
           ALTER TABLE records ADD COLUMN IF NOT EXISTS airtel_is_4g VARCHAR(10) DEFAULT 'No';
           ALTER TABLE records ADD COLUMN IF NOT EXISTS airtel_loopback_ip VARCHAR(50) DEFAULT '';
+          ALTER TABLE records ADD COLUMN IF NOT EXISTS ip_source VARCHAR(50) DEFAULT 'Sheet';
+          ALTER TABLE records ADD COLUMN IF NOT EXISTS dc_dr_reply VARCHAR(30) DEFAULT 'Not received';
         `).catch((e) => console.warn('Migration query warn:', e.message));
 
-        // Auto-migrate legacy working status
+        // Auto-migrate legacy working status and dc/dr reply
         await client.query(`
           UPDATE records SET deployment_status = 'Completed' WHERE working = 'Yes' AND (deployment_status IS NULL OR deployment_status = '' OR deployment_status = 'Pending');
           UPDATE records SET deployment_status = 'Failed' WHERE working = 'No' AND (deployment_status IS NULL OR deployment_status = '');
+          UPDATE records SET dc_dr_reply = 'Received' WHERE (dc_mail = 'Received' OR drc_mail = 'Received') AND (dc_dr_reply IS NULL OR dc_dr_reply = '' OR dc_dr_reply = 'Not received');
         `).catch(() => {});
 
         // 3. Ensure Default Admin exists & password hash is valid
@@ -912,6 +921,8 @@ const db = {
     const working = deploymentStatus === 'Completed' ? 'Yes' : (deploymentStatus === 'Failed' ? 'No' : (data.working || 'No'));
 
     const isDhcp = data.isDhcp || 'No';
+    const ipSource = data.ipSource || 'Sheet';
+    const dcDrReply = data.dcDrReply || (data.dcMail === 'Received' || data.drcMail === 'Received' ? 'Received' : 'Not received');
     const bsnlPresent = data.bsnlPresent || 'Yes';
     const jioPresent = data.jioPresent || 'Yes';
     const airtelPresent = data.airtelPresent || 'Yes';
@@ -928,12 +939,12 @@ const db = {
             vlan_configured, vlan_details, vlan_removed,
             primary_lan_ip, lan_ip_prefix, primary_lan_gateway, secondary_lan_ips,
             atm_ip, atm_gateway,
-            is_dhcp,
+            is_dhcp, ip_source,
             bsnl_present, bsnl_ip, bsnl_gateway, bsnl_ping,
             jio_present, jio_ip, jio_gateway, jio_ping,
             airtel_present, airtel_is_4g, airtel_loopback_ip, airtel_ip, airtel_gateway, ce_ip, airtel_ping,
             deployment_status,
-            configuration, mp_added, device_online, mail_sent, dc_mail, drc_mail, cables_connected, working,
+            configuration, mp_added, device_online, mail_sent, dc_mail, drc_mail, dc_dr_reply, cables_connected, working,
             uat_submitted, uat_form_no, claimed_by, claimed_by_name, notes, created_by, updated_by
           ) VALUES (
             $1, $2, $3, $4, $5, $6,
@@ -941,13 +952,13 @@ const db = {
             $10, $11, $12,
             $13, $14, $15, $16,
             $17, $18,
-            $19,
-            $20, $21, $22, $23,
-            $24, $25, $26, $27,
-            $28, $29, $30, $31, $32, $33, $34,
-            $35,
-            $36, $37, $38, $39, $40, $41, $42, $43,
-            $44, $45, $46, $47, $48, $49, $50
+            $19, $20,
+            $21, $22, $23, $24,
+            $25, $26, $27, $28,
+            $29, $30, $31, $32, $33, $34, $35,
+            $36,
+            $37, $38, $39, $40, $41, $42, $43, $44, $45,
+            $46, $47, $48, $49, $50, $51, $52
           ) RETURNING *;
         `;
 
@@ -957,13 +968,13 @@ const db = {
           data.vlanConfigured || 'No', data.vlanDetails || '', data.vlanRemoved || 'Not Removed',
           data.primaryLanIp || data.lanIp || '', data.lanIpPrefix || '', data.primaryLanGateway || data.lanGateway || '', JSON.stringify(secondaryIps),
           data.atmIp || '', data.atmGateway || '',
-          isDhcp,
+          isDhcp, ipSource,
           bsnlPresent, data.bsnlIp || '', data.bsnlGateway || '', data.bsnlPing || 'No',
           jioPresent, data.jioIp || '', data.jioGateway || '', data.jioPing || 'No',
           airtelPresent, airtelIs4G, airtelLoopbackIp, data.airtelIp || '', data.airtelGateway || '', data.ceIp || '', data.airtelPing || 'No',
           deploymentStatus,
           data.configuration || 'Not completed', data.mpAdded || data.mp || 'No', data.deviceOnline || data.online || 'No', data.mailSent || data.mail || 'No',
-          data.dcMail || 'Not received', data.drcMail || 'Not received', data.cablesConnected || data.cables || 'Not connected', working,
+          dcDrReply, dcDrReply, dcDrReply, data.cablesConnected || data.cables || 'Not connected', working,
           data.uatSubmitted || 'No', data.uatFormNo || '', claimedBy, claimedByName, data.notes || '', author, author
         ];
 
@@ -996,6 +1007,7 @@ const db = {
       atm_ip: data.atmIp || '',
       atm_gateway: data.atmGateway || '',
       is_dhcp: isDhcp,
+      ip_source: ipSource,
       bsnl_present: bsnlPresent,
       bsnl_ip: data.bsnlIp || '',
       bsnl_gateway: data.bsnlGateway || '',
@@ -1016,8 +1028,9 @@ const db = {
       mp_added: data.mpAdded || data.mp || 'No',
       device_online: data.deviceOnline || data.online || 'No',
       mail_sent: data.mailSent || data.mail || 'No',
-      dc_mail: data.dcMail || 'Not received',
-      drc_mail: data.drcMail || 'Not received',
+      dc_mail: dcDrReply,
+      drc_mail: dcDrReply,
+      dc_dr_reply: dcDrReply,
       cables_connected: data.cablesConnected || data.cables || 'Not connected',
       working: working,
       uat_submitted: data.uatSubmitted || 'No',
@@ -1059,6 +1072,12 @@ const db = {
 
         const depStatus = updates.deploymentStatus || (updates.working === 'Yes' ? 'Completed' : (updates.working === 'No' ? 'Failed' : null));
         const working = updates.working || (updates.deploymentStatus === 'Completed' ? 'Yes' : (updates.deploymentStatus === 'Failed' ? 'No' : null));
+
+        const resolvedDcDrReply = updates.dcDrReply !== undefined
+          ? updates.dcDrReply
+          : (updates.dcMail !== undefined ? updates.dcMail : (updates.drcMail !== undefined ? updates.drcMail : null));
+        const resolvedDcMail = resolvedDcDrReply !== null ? resolvedDcDrReply : (updates.dcMail ?? null);
+        const resolvedDrcMail = resolvedDcDrReply !== null ? resolvedDcDrReply : (updates.drcMail ?? null);
 
         const sql = `
           UPDATE records SET
@@ -1109,7 +1128,9 @@ const db = {
             claimed_by = COALESCE($46, claimed_by),
             claimed_by_name = COALESCE($47, claimed_by_name),
             notes = COALESCE($48, notes),
-            updated_by = $49,
+            ip_source = COALESCE($49, ip_source),
+            dc_dr_reply = COALESCE($50, dc_dr_reply),
+            updated_by = $51,
             updated_at = CURRENT_TIMESTAMP
           WHERE id = $1
           RETURNING *;
@@ -1128,9 +1149,11 @@ const db = {
           updates.airtelPresent, updates.airtelIs4G, updates.airtelLoopbackIp, updates.airtelIp, updates.airtelGateway, updates.ceIp, updates.airtelPing,
           depStatus,
           updates.configuration, updates.mpAdded ?? updates.mp, updates.deviceOnline ?? updates.online, updates.mailSent ?? updates.mail,
-          updates.dcMail, updates.drcMail, updates.cablesConnected ?? updates.cables, working,
+          resolvedDcMail, resolvedDrcMail, updates.cablesConnected ?? updates.cables, working,
           updates.uatSubmitted, updates.uatFormNo, updates.claimedBy, updates.claimedByName,
-          updates.notes, author
+          updates.notes,
+          updates.ipSource, resolvedDcDrReply,
+          author
         ];
 
         const res = await p.query(sql, values);
@@ -1146,6 +1169,12 @@ const db = {
     const ex = memRecords[idx];
     const depStatus = updates.deploymentStatus || (updates.working === 'Yes' ? 'Completed' : (updates.working === 'No' ? 'Failed' : ex.deployment_status));
     const working = updates.working || (updates.deploymentStatus === 'Completed' ? 'Yes' : (updates.deploymentStatus === 'Failed' ? 'No' : ex.working));
+
+    const resolvedDcDrReplyMem = updates.dcDrReply !== undefined
+      ? updates.dcDrReply
+      : (updates.dcMail !== undefined ? updates.dcMail : (updates.drcMail !== undefined ? updates.drcMail : undefined));
+    const resolvedDcMailMem = resolvedDcDrReplyMem !== undefined ? resolvedDcDrReplyMem : updates.dcMail;
+    const resolvedDrcMailMem = resolvedDcDrReplyMem !== undefined ? resolvedDcDrReplyMem : updates.drcMail;
 
     const updated = {
       ...ex,
@@ -1167,6 +1196,7 @@ const db = {
       atm_ip: updates.atmIp ?? ex.atm_ip,
       atm_gateway: updates.atmGateway ?? ex.atm_gateway,
       is_dhcp: updates.isDhcp ?? ex.is_dhcp,
+      ip_source: updates.ipSource ?? ex.ip_source,
       bsnl_present: updates.bsnlPresent ?? ex.bsnl_present,
       bsnl_ip: updates.bsnlIp ?? ex.bsnl_ip,
       bsnl_gateway: updates.bsnlGateway ?? ex.bsnl_gateway,
@@ -1187,8 +1217,9 @@ const db = {
       mp_added: (updates.mpAdded ?? updates.mp) ?? ex.mp_added,
       device_online: (updates.deviceOnline ?? updates.online) ?? ex.device_online,
       mail_sent: (updates.mailSent ?? updates.mail) ?? ex.mail_sent,
-      dc_mail: updates.dcMail ?? ex.dc_mail,
-      drc_mail: updates.drcMail ?? ex.drc_mail,
+      dc_mail: resolvedDcMailMem ?? ex.dc_mail,
+      drc_mail: resolvedDrcMailMem ?? ex.drc_mail,
+      dc_dr_reply: resolvedDcDrReplyMem ?? ex.dc_dr_reply ?? (ex.dc_mail === 'Received' || ex.drc_mail === 'Received' ? 'Received' : 'Not received'),
       cables_connected: (updates.cablesConnected ?? updates.cables) ?? ex.cables_connected,
       working: working,
       uat_submitted: updates.uatSubmitted ?? ex.uat_submitted,

@@ -383,11 +383,11 @@ export default function App() {
       'id', 'kind', 'dpCode', 'atmId', 'feName', 'feNumber',
       'newDeviceSerial', 'oldDeviceModel', 'oldDeviceSerial',
       'vlanConfigured', 'vlanDetails', 'vlanRemoved',
-      'primaryLanIp', 'lanIpPrefix', 'primaryLanGateway',
+      'primaryLanIp', 'lanIpPrefix', 'primaryLanGateway', 'isDhcp', 'ipSource',
       'bsnlIp', 'bsnlGateway', 'bsnlPing',
       'jioIp', 'jioGateway', 'jioPing',
       'airtelIp', 'airtelGateway', 'ceIp', 'airtelPing',
-      'configuration', 'csAdded', 'deviceOnline', 'mailSent', 'dcMail', 'drcMail', 'cablesConnected', 'working',
+      'configuration', 'csAdded', 'deviceOnline', 'dcDrReply', 'cablesConnected', 'working',
       'uatSubmitted', 'uatFormNo', 'claimedBy', 'claimedByName',
       'createdBy', 'updatedBy', 'created', 'updated'
     ];

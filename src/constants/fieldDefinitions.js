@@ -1,5 +1,10 @@
 export const SECTIONS = [
   {
+    id: 'ipSourceSection',
+    title: 'SOURCE OF IP DETAILS',
+    fields: ['ipSource']
+  },
+  {
     id: 'lan',
     title: 'LAN CONFIGURATION',
     fields: ['vlan', 'lanIp', 'lanIpPrefix', 'lanGateway']
@@ -26,9 +31,7 @@ export const SECTIONS = [
       'configuration',
       'cs',
       'online',
-      'mail',
-      'dcMail',
-      'drcMail',
+      'dcDrReply',
       'cables',
       'working'
     ]
@@ -173,6 +176,18 @@ export const FIELD_DEFINITIONS = {
     label: 'Device online?',
     type: 'choice',
     options: ['Yes', 'No']
+  },
+  ipSource: {
+    id: 'ipSource',
+    label: 'Source of IP Details',
+    type: 'choice',
+    options: ['Sheet', 'NCCM', 'Mail']
+  },
+  dcDrReply: {
+    id: 'dcDrReply',
+    label: 'DC / DR Reply Received?',
+    type: 'choice',
+    options: ['Received', 'Not received']
   },
   mail: {
     id: 'mail',

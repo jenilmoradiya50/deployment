@@ -442,11 +442,11 @@ app.get('/api/export', optionalAuth, async (req, res) => {
         'deploymentStatus', 'working',
         'newDeviceSerial', 'oldDeviceModel', 'oldDeviceSerial',
         'vlanConfigured', 'vlanDetails', 'vlanRemoved',
-        'primaryLanIp', 'lanIpPrefix', 'primaryLanGateway', 'isDhcp',
+        'primaryLanIp', 'lanIpPrefix', 'primaryLanGateway', 'isDhcp', 'ipSource',
         'bsnlPresent', 'bsnlIp', 'bsnlGateway', 'bsnlPing',
         'jioPresent', 'jioIp', 'jioGateway', 'jioPing',
         'airtelPresent', 'airtelIs4G', 'airtelLoopbackIp', 'airtelIp', 'airtelGateway', 'airtelPing',
-        'configuration', 'csAdded', 'deviceOnline', 'mailSent', 'dcMail', 'drcMail', 'cablesConnected',
+        'configuration', 'csAdded', 'deviceOnline', 'dcDrReply', 'cablesConnected',
         'uatSubmitted', 'uatFormNo', 'claimedBy', 'claimedByName',
         'createdBy', 'updatedBy', 'created', 'updated'
       ];
