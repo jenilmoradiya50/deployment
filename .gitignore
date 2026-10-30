@@ -24,3 +24,8 @@ pnpm-debug.log*
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local SQLite databases
+*.db
+*.sqlite
+sync-agent/*.db

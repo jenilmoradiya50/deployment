@@ -43,6 +43,7 @@ let memRecords = [
   {
     id: 'rec-canara-branch-001',
     kind: 'Branch',
+    provider: 'Uniserved',
     dp_code: 'DP-4102',
     atm_id: '',
     fe_name: 'Rajesh Sharma',
@@ -94,12 +95,18 @@ let memRecords = [
     claimed_by: DEFAULT_ADMIN_USER,
     claimed_by_name: 'Canara Bank SD-WAN Admin',
     notes: 'Migration completed smoothly. All ISP traffic passing through SD-WAN.',
+    completed_at: new Date(Date.now() - 40 * 60 * 60 * 1000).toISOString(),
+    synced_to_local: true,
+    synced_at: new Date(Date.now() - 38 * 60 * 60 * 1000).toISOString(),
+    cloud_ip_purged: false,
     created_by: DEFAULT_ADMIN_USER,
     updated_by: DEFAULT_ADMIN_USER,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   }
 ];
+
+let memArchivedRecords = [];
 
 function sanitizeConnectionString(raw) {
   if (!raw) return raw;
@@ -237,10 +244,33 @@ function formatRecordRow(row) {
     transferRequestedByName: row.transfer_requested_by_name || '',
     transferRequestedAt: row.transfer_requested_at || null,
     notes: row.notes || '',
+    provider: row.provider || 'Uniserved',
+    completedAt: row.completed_at || null,
+    syncedToLocal: Boolean(row.synced_to_local),
+    syncedAt: row.synced_at || null,
+    cloudIpPurged: Boolean(row.cloud_ip_purged),
+    cloudIpPurgedAt: row.cloud_ip_purged_at || null,
     createdBy: row.created_by || '',
     updatedBy: row.updated_by || '',
     created: row.created_at,
     updated: row.updated_at
+  };
+}
+
+function formatArchivedRecordRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    dpCode: row.dp_code || '',
+    completedBy: row.completed_by || '',
+    kind: row.kind || 'Branch',
+    atmId: row.atm_id || '',
+    provider: row.provider || 'Uniserved',
+    deviceSerial: row.device_serial || '',
+    notes: row.notes || '',
+    completedAt: row.completed_at || null,
+    archivedAt: row.archived_at || row.created_at || null,
+    archivedBy: row.archived_by || ''
   };
 }
 
@@ -329,11 +359,32 @@ async function initDatabase() {
             transfer_requested_by_name VARCHAR(150) DEFAULT '',
             transfer_requested_at TIMESTAMP WITH TIME ZONE,
             notes TEXT DEFAULT '',
+            provider VARCHAR(30) DEFAULT 'Uniserved',
+            completed_at TIMESTAMP WITH TIME ZONE,
+            synced_to_local BOOLEAN DEFAULT FALSE,
+            synced_at TIMESTAMP WITH TIME ZONE,
+            cloud_ip_purged BOOLEAN DEFAULT FALSE,
+            cloud_ip_purged_at TIMESTAMP WITH TIME ZONE,
             created_by VARCHAR(100) DEFAULT 'Admin@Canara',
             updated_by VARCHAR(100) DEFAULT 'Admin@Canara',
             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
           );
+
+          CREATE TABLE IF NOT EXISTS archived_records (
+            id VARCHAR(64) PRIMARY KEY,
+            dp_code VARCHAR(100) NOT NULL,
+            completed_by VARCHAR(150) NOT NULL,
+            kind VARCHAR(20) DEFAULT 'Branch',
+            atm_id VARCHAR(100) DEFAULT '',
+            provider VARCHAR(30) DEFAULT 'Uniserved',
+            device_serial VARCHAR(100) DEFAULT '',
+            notes TEXT DEFAULT '',
+            completed_at TIMESTAMP WITH TIME ZONE,
+            archived_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            archived_by VARCHAR(100) DEFAULT ''
+          );
+          CREATE INDEX IF NOT EXISTS idx_archived_dp ON archived_records(dp_code);
         `);
 
         // Migration safety: ensure new columns exist on existing databases
@@ -351,13 +402,21 @@ async function initDatabase() {
           ALTER TABLE records ADD COLUMN IF NOT EXISTS ip_source VARCHAR(50) DEFAULT 'Sheet';
           ALTER TABLE records ADD COLUMN IF NOT EXISTS dc_dr_reply VARCHAR(30) DEFAULT 'Not received';
           ALTER TABLE records ADD COLUMN IF NOT EXISTS handler_history JSONB DEFAULT '[]'::jsonb;
+          ALTER TABLE records ADD COLUMN IF NOT EXISTS provider VARCHAR(30) DEFAULT 'Uniserved';
+          ALTER TABLE records ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP WITH TIME ZONE;
+          ALTER TABLE records ADD COLUMN IF NOT EXISTS synced_to_local BOOLEAN DEFAULT FALSE;
+          ALTER TABLE records ADD COLUMN IF NOT EXISTS synced_at TIMESTAMP WITH TIME ZONE;
+          ALTER TABLE records ADD COLUMN IF NOT EXISTS cloud_ip_purged BOOLEAN DEFAULT FALSE;
+          ALTER TABLE records ADD COLUMN IF NOT EXISTS cloud_ip_purged_at TIMESTAMP WITH TIME ZONE;
         `).catch((e) => console.warn('Migration query warn:', e.message));
 
-        // Auto-migrate legacy working status and dc/dr reply
+        // Auto-migrate legacy working status, dc/dr reply, and provider
         await client.query(`
           UPDATE records SET deployment_status = 'Completed' WHERE working = 'Yes' AND (deployment_status IS NULL OR deployment_status = '' OR deployment_status = 'Pending');
           UPDATE records SET deployment_status = 'Failed' WHERE working = 'No' AND (deployment_status IS NULL OR deployment_status = '');
           UPDATE records SET dc_dr_reply = 'Received' WHERE (dc_mail = 'Received' OR drc_mail = 'Received') AND (dc_dr_reply IS NULL OR dc_dr_reply = '' OR dc_dr_reply = 'Not received');
+          UPDATE records SET provider = 'Uniserved' WHERE provider IS NULL OR provider = '';
+          UPDATE records SET completed_at = updated_at WHERE deployment_status = 'Completed' AND completed_at IS NULL;
         `).catch(() => {});
 
         // 3. Ensure Default Admin exists & password hash is valid
@@ -926,6 +985,8 @@ const db = {
 
     const deploymentStatus = data.deploymentStatus || (data.working === 'Yes' ? 'Completed' : (data.working === 'No' ? 'Failed' : 'Pending'));
     const working = deploymentStatus === 'Completed' ? 'Yes' : (deploymentStatus === 'Failed' ? 'No' : (data.working || 'No'));
+    const provider = data.provider || 'Uniserved';
+    const completedAt = deploymentStatus === 'Completed' ? (data.completedAt || new Date().toISOString()) : null;
 
     const isDhcp = data.isDhcp || 'No';
     const ipSource = data.ipSource || 'Sheet';
@@ -961,7 +1022,9 @@ const db = {
             airtel_present, airtel_is_4g, airtel_loopback_ip, airtel_ip, airtel_gateway, ce_ip, airtel_ping,
             deployment_status,
             configuration, mp_added, device_online, mail_sent, dc_mail, drc_mail, dc_dr_reply, cables_connected, working,
-            uat_submitted, uat_form_no, claimed_by, claimed_by_name, notes, handler_history, created_by, updated_by
+            uat_submitted, uat_form_no, claimed_by, claimed_by_name, notes, handler_history,
+            provider, completed_at, synced_to_local, synced_at, cloud_ip_purged,
+            created_by, updated_by
           ) VALUES (
             $1, $2, $3, $4, $5, $6,
             $7, $8, $9,
@@ -974,7 +1037,9 @@ const db = {
             $29, $30, $31, $32, $33, $34, $35,
             $36,
             $37, $38, $39, $40, $41, $42, $43, $44, $45,
-            $46, $47, $48, $49, $50, $51, $52, $53
+            $46, $47, $48, $49, $50, $51,
+            $52, $53, $54, $55, $56,
+            $57, $58
           ) RETURNING *;
         `;
 
@@ -992,7 +1057,9 @@ const db = {
           data.configuration || 'Not completed', data.mpAdded || data.mp || 'No', data.deviceOnline || data.online || 'No', data.mailSent || data.mail || 'No',
           dcDrReply, dcDrReply, dcDrReply, data.cablesConnected || data.cables || 'Not connected', working,
           data.uatSubmitted || 'No', data.uatFormNo || '', claimedBy, claimedByName, data.notes || '',
-          JSON.stringify(initialHistory), author, author
+          JSON.stringify(initialHistory),
+          provider, completedAt, false, null, false,
+          author, author
         ];
 
         const res = await p.query(sql, values);
@@ -1007,6 +1074,7 @@ const db = {
     const newRec = {
       id: newId,
       kind: data.kind || 'Branch',
+      provider: provider,
       dp_code: data.dpCode || '',
       atm_id: data.atmId || '',
       fe_name: data.feName || '',
@@ -1056,6 +1124,10 @@ const db = {
       claimed_by_name: claimedByName,
       notes: data.notes || '',
       handler_history: initialHistory,
+      completed_at: completedAt,
+      synced_to_local: false,
+      synced_at: null,
+      cloud_ip_purged: false,
       created_by: author,
       updated_by: author,
       created_at: now,
@@ -1088,8 +1160,16 @@ const db = {
         const existing = await p.query('SELECT * FROM records WHERE id = $1', [id]);
         if (existing.rows.length === 0) return null;
 
+        const existingRow = existing.rows[0];
         const depStatus = updates.deploymentStatus || (updates.working === 'Yes' ? 'Completed' : (updates.working === 'No' ? 'Failed' : null));
         const working = updates.working || (updates.deploymentStatus === 'Completed' ? 'Yes' : (updates.deploymentStatus === 'Failed' ? 'No' : null));
+
+        let completedAtVal = updates.completedAt !== undefined ? updates.completedAt : existingRow.completed_at;
+        if (depStatus === 'Completed' && !completedAtVal) {
+          completedAtVal = new Date().toISOString();
+        }
+        const syncedToLocalVal = updates.syncedToLocal !== undefined ? updates.syncedToLocal : false;
+        const cloudIpPurgedVal = updates.cloudIpPurged !== undefined ? updates.cloudIpPurged : existingRow.cloud_ip_purged;
 
         const resolvedDcDrReply = updates.dcDrReply !== undefined
           ? updates.dcDrReply
@@ -1149,7 +1229,11 @@ const db = {
             ip_source = COALESCE($49, ip_source),
             dc_dr_reply = COALESCE($50, dc_dr_reply),
             handler_history = COALESCE($51, handler_history),
-            updated_by = $52,
+            provider = COALESCE($52, provider),
+            completed_at = COALESCE($53, completed_at),
+            synced_to_local = COALESCE($54, synced_to_local),
+            cloud_ip_purged = COALESCE($55, cloud_ip_purged),
+            updated_by = $56,
             updated_at = CURRENT_TIMESTAMP
           WHERE id = $1
           RETURNING *;
@@ -1173,6 +1257,10 @@ const db = {
           updates.notes,
           updates.ipSource, resolvedDcDrReply,
           updates.handlerHistory !== undefined ? JSON.stringify(updates.handlerHistory) : null,
+          updates.provider,
+          completedAtVal,
+          syncedToLocalVal,
+          cloudIpPurgedVal,
           author
         ];
 
@@ -1189,6 +1277,11 @@ const db = {
     const ex = memRecords[idx];
     const depStatus = updates.deploymentStatus || (updates.working === 'Yes' ? 'Completed' : (updates.working === 'No' ? 'Failed' : ex.deployment_status));
     const working = updates.working || (updates.deploymentStatus === 'Completed' ? 'Yes' : (updates.deploymentStatus === 'Failed' ? 'No' : ex.working));
+
+    let completedAtVal = updates.completedAt !== undefined ? updates.completedAt : ex.completed_at;
+    if (depStatus === 'Completed' && !completedAtVal) {
+      completedAtVal = new Date().toISOString();
+    }
 
     const resolvedDcDrReplyMem = updates.dcDrReply !== undefined
       ? updates.dcDrReply
@@ -1248,6 +1341,12 @@ const db = {
       claimed_by_name: updates.claimedByName ?? ex.claimed_by_name,
       notes: updates.notes ?? ex.notes,
       handler_history: updates.handlerHistory !== undefined ? updates.handlerHistory : (ex.handler_history || []),
+      provider: updates.provider ?? ex.provider ?? 'Uniserved',
+      completed_at: completedAtVal,
+      synced_to_local: updates.syncedToLocal !== undefined ? updates.syncedToLocal : false,
+      synced_at: updates.syncedToLocal ? (updates.syncedAt || new Date().toISOString()) : ex.synced_at,
+      cloud_ip_purged: updates.cloudIpPurged !== undefined ? updates.cloudIpPurged : (ex.cloud_ip_purged || false),
+      cloud_ip_purged_at: updates.cloudIpPurgedAt ?? ex.cloud_ip_purged_at,
       updated_by: author,
       updated_at: new Date().toISOString()
     };
@@ -1270,7 +1369,16 @@ const db = {
       newNotes = newNotes ? `${newNotes}\n${reasonTag}` : reasonTag;
     }
 
-    const updates = { deploymentStatus: status, working, notes: newNotes };
+    const updates = {
+      deploymentStatus: status,
+      working,
+      notes: newNotes,
+      syncedToLocal: false
+    };
+
+    if (status === 'Completed') {
+      updates.completedAt = existing?.completedAt || new Date().toISOString();
+    }
 
     // On Hold sites: unlinked from previous handler, sent to unassigned On-Hold pool, saving history of previous NOC
     if (status === 'On Hold') {
@@ -1537,6 +1645,249 @@ const db = {
         total: atmTotal
       }
     };
+  },
+
+  // -------------------------------------------------------------
+  // SECURE SYNC & 36-HOUR CLOUD IP PURGING METHODS
+  // -------------------------------------------------------------
+  async getPendingSyncRecords(limit = 100) {
+    await initDatabase();
+    const p = getPool();
+    if (p && isInitialized) {
+      try {
+        const res = await p.query(`
+          SELECT * FROM records
+          WHERE synced_to_local IS NOT TRUE OR synced_to_local IS NULL
+          ORDER BY updated_at ASC
+          LIMIT $1;
+        `, [limit]);
+        return res.rows.map(formatRecordRow);
+      } catch (err) {
+        console.warn('⚠️ [PostgreSQL] getPendingSyncRecords query error:', err.message);
+      }
+    }
+    return memRecords
+      .filter(r => !r.synced_to_local)
+      .slice(0, limit)
+      .map(formatRecordRow);
+  },
+
+  async acknowledgeSync(recordIds = []) {
+    if (!Array.isArray(recordIds) || recordIds.length === 0) return { updated: 0 };
+    await initDatabase();
+    const p = getPool();
+    const now = new Date().toISOString();
+    if (p && isInitialized) {
+      try {
+        const res = await p.query(`
+          UPDATE records
+          SET synced_to_local = TRUE, synced_at = CURRENT_TIMESTAMP
+          WHERE id = ANY($1::text[])
+          RETURNING id;
+        `, [recordIds]);
+        return { updated: res.rows.length };
+      } catch (err) {
+        console.warn('⚠️ [PostgreSQL] acknowledgeSync error:', err.message);
+      }
+    }
+    let count = 0;
+    memRecords.forEach(r => {
+      if (recordIds.includes(r.id)) {
+        r.synced_to_local = true;
+        r.synced_at = now;
+        count++;
+      }
+    });
+    return { updated: count };
+  },
+
+  async purgeEligibleCloudIps() {
+    await initDatabase();
+    const p = getPool();
+    const cutoffDate = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString();
+    if (p && isInitialized) {
+      try {
+        // CATASTROPHIC DATA LOSS PREVENTION:
+        // Must be Completed, completed_at <= NOW() - 36h, AND synced_to_local = TRUE
+        const res = await p.query(`
+          UPDATE records
+          SET
+            primary_lan_ip = '',
+            lan_ip_prefix = '',
+            primary_lan_gateway = '',
+            secondary_lan_ips = '[]'::jsonb,
+            atm_ip = '',
+            atm_gateway = '',
+            bsnl_ip = '',
+            bsnl_gateway = '',
+            jio_ip = '',
+            jio_gateway = '',
+            airtel_loopback_ip = '',
+            airtel_ip = '',
+            airtel_gateway = '',
+            ce_ip = '',
+            cloud_ip_purged = TRUE,
+            cloud_ip_purged_at = CURRENT_TIMESTAMP
+          WHERE deployment_status = 'Completed'
+            AND completed_at IS NOT NULL
+            AND completed_at <= (CURRENT_TIMESTAMP - INTERVAL '36 hours')
+            AND synced_to_local = TRUE
+            AND (cloud_ip_purged IS NOT TRUE OR cloud_ip_purged IS NULL)
+          RETURNING id, dp_code, atm_id;
+        `);
+        return { purgedCount: res.rows.length, records: res.rows };
+      } catch (err) {
+        console.warn('⚠️ [PostgreSQL] purgeEligibleCloudIps error:', err.message);
+      }
+    }
+
+    let count = 0;
+    const purged = [];
+    memRecords.forEach(r => {
+      const isCompleted = r.deployment_status === 'Completed';
+      const isOver36h = r.completed_at && new Date(r.completed_at) <= new Date(cutoffDate);
+      if (isCompleted && isOver36h && r.synced_to_local && !r.cloud_ip_purged) {
+        r.primary_lan_ip = '';
+        r.lan_ip_prefix = '';
+        r.primary_lan_gateway = '';
+        r.secondary_lan_ips = [];
+        r.atm_ip = '';
+        r.atm_gateway = '';
+        r.bsnl_ip = '';
+        r.bsnl_gateway = '';
+        r.jio_ip = '';
+        r.jio_gateway = '';
+        r.airtel_loopback_ip = '';
+        r.airtel_ip = '';
+        r.airtel_gateway = '';
+        r.ce_ip = '';
+        r.cloud_ip_purged = true;
+        r.cloud_ip_purged_at = new Date().toISOString();
+        count++;
+        purged.push({ id: r.id, dp_code: r.dp_code });
+      }
+    });
+    return { purgedCount: count, records: purged };
+  },
+
+  // -------------------------------------------------------------
+  // ARCHIVED DEPLOYMENT RECORDS (Minimal Historical Storage)
+  // -------------------------------------------------------------
+  async getArchivedRecords(params = {}) {
+    await initDatabase();
+    const p = getPool();
+    const search = (params.search || '').trim().toLowerCase();
+    const kind = params.kind || 'All';
+    const provider = params.provider || 'All';
+
+    if (p && isInitialized) {
+      try {
+        let sql = `SELECT * FROM archived_records WHERE 1=1`;
+        const values = [];
+
+        if (kind !== 'All') {
+          values.push(kind);
+          sql += ` AND kind = $${values.length}`;
+        }
+        if (provider !== 'All') {
+          values.push(provider);
+          sql += ` AND provider = $${values.length}`;
+        }
+        if (search) {
+          values.push(`%${search}%`);
+          sql += ` AND (LOWER(dp_code) LIKE $${values.length} OR LOWER(completed_by) LIKE $${values.length} OR LOWER(atm_id) LIKE $${values.length} OR LOWER(device_serial) LIKE $${values.length} OR LOWER(notes) LIKE $${values.length})`;
+        }
+
+        sql += ` ORDER BY archived_at DESC;`;
+        const res = await p.query(sql, values);
+        return res.rows.map(formatArchivedRecordRow);
+      } catch (err) {
+        console.warn('⚠️ [PostgreSQL] getArchivedRecords query error:', err.message);
+      }
+    }
+
+    return memArchivedRecords
+      .filter(r => {
+        if (kind !== 'All' && r.kind !== kind) return false;
+        if (provider !== 'All' && r.provider !== provider) return false;
+        if (search) {
+          const str = `${r.dp_code} ${r.completed_by} ${r.atm_id} ${r.device_serial} ${r.notes}`.toLowerCase();
+          if (!str.includes(search)) return false;
+        }
+        return true;
+      })
+      .map(formatArchivedRecordRow);
+  },
+
+  async createArchivedRecord(data = {}, user = {}) {
+    await initDatabase();
+    const p = getPool();
+    const newId = generateId('arc');
+    const dpCode = (data.dpCode || '').trim();
+    const completedBy = (data.completedBy || user.name || user.username || 'NOC').trim();
+    if (!dpCode) throw new Error('Branch DP Code is required for archiving');
+    if (!completedBy) throw new Error('Completed by (handler name) is required');
+
+    const kind = data.kind || 'Branch';
+    const atmId = (data.atmId || '').trim();
+    const provider = data.provider || 'Uniserved';
+    const deviceSerial = (data.deviceSerial || '').trim();
+    const notes = (data.notes || '').trim();
+    const completedAt = data.completedAt || new Date().toISOString();
+    const archivedBy = user.name || user.username || 'Admin';
+
+    if (p && isInitialized) {
+      try {
+        const res = await p.query(`
+          INSERT INTO archived_records (
+            id, dp_code, completed_by, kind, atm_id, provider, device_serial, notes, completed_at, archived_by
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          RETURNING *;
+        `, [newId, dpCode, completedBy, kind, atmId, provider, deviceSerial, notes, completedAt, archivedBy]);
+        return formatArchivedRecordRow(res.rows[0]);
+      } catch (err) {
+        console.warn('⚠️ [PostgreSQL] createArchivedRecord error:', err.message);
+      }
+    }
+
+    const newRec = {
+      id: newId,
+      dp_code: dpCode,
+      completed_by: completedBy,
+      kind,
+      atm_id: atmId,
+      provider,
+      device_serial: deviceSerial,
+      notes,
+      completed_at: completedAt,
+      archived_at: new Date().toISOString(),
+      archived_by: archivedBy
+    };
+    memArchivedRecords.unshift(newRec);
+    return formatArchivedRecordRow(newRec);
+  },
+
+  async deleteArchivedRecord(id, user = {}) {
+    const role = (user.role || '').toLowerCase();
+    if (role !== 'admin' && role !== 'pm') {
+      throw new Error('Only Admin or PM can delete archived records');
+    }
+    await initDatabase();
+    const p = getPool();
+    if (p && isInitialized) {
+      try {
+        const res = await p.query(`DELETE FROM archived_records WHERE id = $1 RETURNING id;`, [id]);
+        return res.rows.length > 0;
+      } catch (err) {
+        console.warn('⚠️ [PostgreSQL] deleteArchivedRecord error:', err.message);
+      }
+    }
+    const idx = memArchivedRecords.findIndex(r => r.id === id);
+    if (idx !== -1) {
+      memArchivedRecords.splice(idx, 1);
+      return true;
+    }
+    return false;
   }
 };
 

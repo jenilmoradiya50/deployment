@@ -59,6 +59,7 @@ export default function RecordFormModal({
 
       setFormData({
         ...recordToEdit,
+        provider: recordToEdit.provider || 'Uniserved',
         ipSource: recordToEdit.ipSource || 'Sheet',
         dcDrReply: recordToEdit.dcDrReply || (recordToEdit.dcMail === 'Received' || recordToEdit.drcMail === 'Received' ? 'Received' : 'Not received'),
         deploymentStatus: recordToEdit.deploymentStatus || (recordToEdit.working === 'Yes' ? 'Completed' : (recordToEdit.working === 'No' ? 'Failed' : 'Pending')),
@@ -86,6 +87,7 @@ export default function RecordFormModal({
 
       setFormData({
         kind: kind === 'All' ? 'Branch' : kind,
+        provider: 'Uniserved',
         // For PM & Admin: default to Unassigned so any NOC can claim it
         // For NOC: default to themselves
         claimedBy: isPMOrAdmin ? '' : (currentUser?.username || ''),
@@ -126,6 +128,7 @@ export default function RecordFormModal({
       ...currentForm,
       id: currentRecordIdRef.current || currentForm.id,
       kind: currentForm.kind || (isBranch ? 'Branch' : 'ATM'),
+      provider: currentForm.provider || 'Uniserved',
       ipSource: currentForm.ipSource || 'Sheet',
       dcDrReply: currentForm.dcDrReply || 'Not received',
       deploymentStatus: status,
@@ -530,6 +533,27 @@ export default function RecordFormModal({
                 </div>
               </div>
 
+              {/* Deployment Provider Selector (Uniserved vs Sify) */}
+              <div className="site-kind-selector-bar">
+                <span className="kind-selector-title">Deployment Provider:</span>
+                <div className="kind-toggle-pills">
+                  <button
+                    type="button"
+                    className={`kind-pill-btn ${(formData.provider || 'Uniserved') === 'Uniserved' ? 'active' : ''}`}
+                    onClick={() => handleChange('provider', 'Uniserved', true)}
+                  >
+                    🏢 Uniserved (Default)
+                  </button>
+                  <button
+                    type="button"
+                    className={`kind-pill-btn ${formData.provider === 'Sify' ? 'active' : ''}`}
+                    onClick={() => handleChange('provider', 'Sify', true)}
+                  >
+                    🏢 Sify
+                  </button>
+                </div>
+              </div>
+
               <div className="quick-add-banner">
                 <span className="banner-icon">💡</span>
                 <div>
@@ -734,6 +758,27 @@ export default function RecordFormModal({
                               {st === 'Completed' ? '🟢 ' : st === 'Pending' ? '⏳ ' : st === 'On Hold' ? '🟡 ' : '🔴 '}
                               {st}
                             </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="modal-form-field">
+                    <label className="field-title required">Deployment Provider</label>
+                    <div className="choice-pills-row">
+                      {['Uniserved', 'Sify'].map(pvd => {
+                        const isChecked = (formData.provider || 'Uniserved') === pvd;
+                        return (
+                          <label key={pvd} className={`choice-radio-pill ${isChecked ? 'active' : ''}`}>
+                            <input
+                              type="radio"
+                              name="provider"
+                              value={pvd}
+                              checked={isChecked}
+                              onChange={() => handleChange('provider', pvd, true)}
+                            />
+                            <span>🏢 {pvd}</span>
                           </label>
                         );
                       })}

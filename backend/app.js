@@ -11,8 +11,8 @@ const app = express();
 
 app.use(cors({
   origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Sync-Token', 'x-sync-token']
 }));
 
 app.use(express.json({ limit: '15mb' }));
@@ -217,11 +217,19 @@ app.delete(['/api/admin/users/:id', '/api/users/:id'], authMiddleware, requireAd
   }
 });
 
+let lastPurgeCheck = 0;
+
 // -------------------------------------------------------------
 // 4. SITE RECORDS CRUD (PROTECTED)
 // -------------------------------------------------------------
 app.get('/api/records', authMiddleware, async (req, res) => {
   try {
+    // Passive 36h IP Purge: check periodically (every 10 minutes) on incoming queries
+    if (Date.now() - lastPurgeCheck > 10 * 60 * 1000) {
+      lastPurgeCheck = Date.now();
+      db.purgeEligibleCloudIps().catch(e => console.warn('Passive IP purge warn:', e.message));
+    }
+
     const { kind, working, status, search, claimedBy } = req.query;
     const records = await db.getAllRecords({ kind, working, status, search, claimedBy });
     res.json(records);
@@ -438,7 +446,7 @@ app.get('/api/export', optionalAuth, async (req, res) => {
 
     if (format === 'csv') {
       const fields = [
-        'id', 'kind', 'dpCode', 'atmId', 'feName', 'feNumber',
+        'id', 'kind', 'provider', 'dpCode', 'atmId', 'feName', 'feNumber',
         'deploymentStatus', 'working',
         'newDeviceSerial', 'oldDeviceModel', 'oldDeviceSerial',
         'vlanConfigured', 'vlanDetails', 'vlanRemoved',
@@ -448,7 +456,7 @@ app.get('/api/export', optionalAuth, async (req, res) => {
         'airtelPresent', 'airtelIs4G', 'airtelLoopbackIp', 'airtelIp', 'airtelGateway', 'airtelPing',
         'configuration', 'csAdded', 'deviceOnline', 'dcDrReply', 'cablesConnected',
         'uatSubmitted', 'uatFormNo', 'claimedBy', 'claimedByName',
-        'createdBy', 'updatedBy', 'created', 'updated'
+        'completedAt', 'createdBy', 'updatedBy', 'created', 'updated'
       ];
 
       const csvHeader = fields.join(',');
@@ -470,6 +478,115 @@ app.get('/api/export', optionalAuth, async (req, res) => {
     res.json(records);
   } catch (err) {
     res.status(500).json({ error: 'Export failed', details: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// 5. SECURE SYNC & 36-HOUR PURGE (REQUIREMENT 1 & 2)
+// -------------------------------------------------------------
+function syncAuth(req, res, next) {
+  const syncToken = req.headers['x-sync-token'];
+  const expectedToken = process.env.SYNC_AGENT_TOKEN || 'canara_sync_secret_2026';
+  if (syncToken && syncToken === expectedToken) {
+    req.user = { username: 'sync_agent', role: 'admin', name: 'Local Sync Agent' };
+    return next();
+  }
+  return authMiddleware(req, res, next);
+}
+
+// GET /api/sync/pending - Local agent pulls pending records
+app.get('/api/sync/pending', syncAuth, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 100, 250);
+    const records = await db.getPendingSyncRecords(limit);
+    res.json({
+      count: records.length,
+      records,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch pending sync records', details: err.message });
+  }
+});
+
+// POST /api/sync/ack - Local agent acknowledges storage
+app.post('/api/sync/ack', syncAuth, async (req, res) => {
+  try {
+    const { recordIds } = req.body || {};
+    if (!Array.isArray(recordIds) || recordIds.length === 0) {
+      return res.status(400).json({ error: 'recordIds array is required' });
+    }
+    const result = await db.acknowledgeSync(recordIds);
+    res.json({ message: 'Sync acknowledged successfully', updated: result.updated });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to acknowledge sync', details: err.message });
+  }
+});
+
+// ALL /api/cron/purge-completed-ips - 36-hour hosted IP purge trigger
+app.all('/api/cron/purge-completed-ips', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const cronSecret = process.env.CRON_SECRET;
+    const isVercelCron = cronSecret && req.headers['x-vercel-cron-secret'] === cronSecret;
+    const syncToken = req.headers['x-sync-token'];
+    const isSyncToken = syncToken && syncToken === (process.env.SYNC_AGENT_TOKEN || 'canara_sync_secret_2026');
+
+    let isAuthorized = isVercelCron || isSyncToken;
+    if (!isAuthorized && authHeader) {
+      try {
+        const token = authHeader.replace(/^Bearer\s+/i, '');
+        const decoded = jwt.verify(token, JWT_SECRET);
+        if (decoded && (decoded.role === 'admin' || decoded.role === 'pm')) {
+          isAuthorized = true;
+        }
+      } catch {}
+    }
+
+    if (!isAuthorized && process.env.NODE_ENV === 'production') {
+      return res.status(401).json({ error: 'Unauthorized to trigger IP purge' });
+    }
+
+    const result = await db.purgeEligibleCloudIps();
+    res.json({
+      message: `36-hour cloud IP purge completed. Purged ${result.purgedCount} site(s).`,
+      purgedCount: result.purgedCount,
+      purgedRecords: result.records,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to execute 36-hour IP purge', details: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// 6. ARCHIVED DEPLOYMENT RECORDS (REQUIREMENT 4)
+// -------------------------------------------------------------
+app.get('/api/archived-records', authMiddleware, async (req, res) => {
+  try {
+    const list = await db.getArchivedRecords(req.query);
+    res.json(list);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch archived records', details: err.message });
+  }
+});
+
+app.post('/api/archived-records', authMiddleware, async (req, res) => {
+  try {
+    const created = await db.createArchivedRecord(req.body, req.user);
+    res.status(201).json({ message: 'Deployment record archived successfully', record: created });
+  } catch (err) {
+    res.status(400).json({ error: err.message || 'Failed to archive record' });
+  }
+});
+
+app.delete('/api/archived-records/:id', authMiddleware, async (req, res) => {
+  try {
+    const deleted = await db.deleteArchivedRecord(req.params.id, req.user);
+    if (!deleted) return res.status(404).json({ error: 'Archived record not found' });
+    res.json({ message: 'Archived record deleted' });
+  } catch (err) {
+    res.status(403).json({ error: err.message });
   }
 });
 

@@ -10,6 +10,7 @@ export default function RecordCard({
   onRequestTransfer,
   onAcceptTransfer,
   onRejectTransfer,
+  onArchiveSite,
   onExport,
   onNotify
 }) {
@@ -220,6 +221,9 @@ export default function RecordCard({
         <div className="site-title-group">
           <div className="site-primary-row">
             <span className="site-kind-badge">{isBranch ? 'BRANCH' : 'ATM'}</span>
+            <span className={`provider-badge-pill ${record.provider === 'Sify' ? 'sify' : 'uniserved'}`} title={`Deployment Provider: ${record.provider || 'Uniserved'}`}>
+              🏢 {record.provider || 'Uniserved'}
+            </span>
             <h3 className="site-title">{title}</h3>
             {!isBranch && record.dpCode && (
               <span className="base-dp-badge" title="Parent Branch Base DP">
@@ -229,6 +233,11 @@ export default function RecordCard({
             {isUnassigned && (
               <span className="open-pool-badge" title="Open site in deployment pool: click 'Take / Claim Site' to assign to yourself">
                 🌐 Open Site
+              </span>
+            )}
+            {record.cloudIpPurged && (
+              <span className="cloud-purged-pill" title="Sensitive IP parameters were scrubbed from cloud after 36-hour retention policy. Full records are archived safely in local SQLite.">
+                🔒 Local Storage (IP Purged)
               </span>
             )}
             
@@ -241,6 +250,18 @@ export default function RecordCard({
         </div>
 
         <div className="card-actions-wrapper" onClick={(e) => e.stopPropagation()}>
+          {isCompleted && onArchiveSite && (
+            <button
+              type="button"
+              className="card-action-btn archive-action-btn"
+              onClick={() => onArchiveSite(record)}
+              title="Save a minimal historic reference to the Archived Deployments section"
+            >
+              <span className="btn-icon">📦</span>
+              <span className="btn-text">Archive</span>
+            </button>
+          )}
+
           {canEdit ? (
             <button
               type="button"
@@ -315,6 +336,16 @@ export default function RecordCard({
           <div className="compact-field">
             <span className="compact-lbl">Base Branch DP:</span>
             <strong>{record.dpCode}</strong>
+          </div>
+        )}
+
+        {record.cloudIpPurged && (
+          <div className="compact-field purged-security-banner">
+            <span className="purged-shield-icon">🔒</span>
+            <div className="purged-text-block">
+              <strong>IP Details Archived Locally (Cloud Purged):</strong>
+              <span> Per security policy, confidential IP & circuit parameters were purged from cloud after 36h retention. Complete parameters are stored securely in your local SQLite database.</span>
+            </div>
           </div>
         )}
 

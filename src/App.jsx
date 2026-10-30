@@ -4,6 +4,7 @@ import SummaryCards from './components/SummaryCards';
 import Toolbar from './components/Toolbar';
 import RecordCard from './components/RecordCard';
 import RecordFormModal from './components/RecordFormModal';
+import ArchivedRecordsView from './components/ArchivedRecordsView';
 import ImportExportModal from './components/ImportExportModal';
 import UserManagementModal from './components/UserManagementModal';
 import ProfileModal from './components/ProfileModal';
@@ -19,11 +20,13 @@ export default function App() {
   // Default to 'All' to mix Branch and ATM on home dashboard by default
   const [kind, setKind] = useState('All');
   const [records, setRecords] = useState([]);
+  const [archivedRecords, setArchivedRecords] = useState([]);
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [handlerFilter, setHandlerFilter] = useState('all');
+  const [providerFilter, setProviderFilter] = useState('all');
   const [activeView, setActiveView] = useState('my-pending');
 
   // Modals state
@@ -106,12 +109,23 @@ export default function App() {
     }
   }, [currentUser, showToast]);
 
+  const loadArchivedData = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const list = await api.getArchivedRecords();
+      setArchivedRecords(list || []);
+    } catch (err) {
+      console.warn('Could not load archived records:', err.message);
+    }
+  }, [currentUser]);
+
   useEffect(() => {
     if (currentUser) {
       loadData();
       loadUsers();
+      loadArchivedData();
     }
-  }, [currentUser, loadData, loadUsers]);
+  }, [currentUser, loadData, loadUsers, loadArchivedData]);
 
   // Set default primary view based on role
   useEffect(() => {
@@ -212,9 +226,10 @@ export default function App() {
       completed,
       onHold,
       unassignedPending,
-      all: currentKindRecords.length
+      all: currentKindRecords.length,
+      archived: archivedRecords.length
     };
-  }, [currentKindRecords, currentUser, isAdmin, isPM]);
+  }, [currentKindRecords, currentUser, isAdmin, isPM, archivedRecords]);
 
   // Filtered displayed records
   const displayedRecords = useMemo(() => {
@@ -225,6 +240,12 @@ export default function App() {
       const recStatus = r.deploymentStatus || (r.working === 'Yes' ? 'Completed' : (r.working === 'No' ? 'Failed' : 'Pending'));
       const isHandler = (r.claimedBy || '').toLowerCase() === curUname;
       const isUnclaimed = !r.claimedBy || r.claimedBy.trim() === '';
+      const recProvider = r.provider || 'Uniserved';
+
+      // Provider filter applies across all views
+      if (providerFilter !== 'all' && recProvider !== providerFilter) {
+        return false;
+      }
 
       // If search query is entered, search across currentKindRecords regardless of active tab
       if (q) {
@@ -274,7 +295,7 @@ export default function App() {
 
       return true;
     });
-  }, [currentKindRecords, search, activeView, statusFilter, handlerFilter, currentUser, isAdmin, isPM]);
+  }, [currentKindRecords, search, activeView, statusFilter, handlerFilter, providerFilter, currentUser, isAdmin, isPM]);
 
   // Claim site
   const handleClaimSite = async (recordId) => {
@@ -422,6 +443,52 @@ export default function App() {
     }
   };
 
+  // Archived deployment records handlers
+  const handleAddArchive = async (archivePayload) => {
+    try {
+      const res = await api.createArchivedRecord(archivePayload);
+      setArchivedRecords(prev => [res.record, ...prev]);
+      showToast(`Archived record for ${archivePayload.dpCode} saved successfully!`);
+      return res.record;
+    } catch (err) {
+      showToast('Failed to create archive record: ' + err.message, 'error');
+      throw err;
+    }
+  };
+
+  const handleDeleteArchive = async (id, dpCode) => {
+    if (!window.confirm(`Permanently delete archived record for ${dpCode}?`)) return;
+    try {
+      await api.deleteArchivedRecord(id);
+      setArchivedRecords(prev => prev.filter(r => r.id !== id));
+      showToast(`Deleted archive record for ${dpCode}`);
+    } catch (err) {
+      showToast(err.message || 'Failed to delete archive', 'error');
+    }
+  };
+
+  const handleArchiveSite = async (record) => {
+    const defaultNotes = record.notes ? `Archived from completed deployment. ${record.notes}` : 'Archived from completed deployment.';
+    const payload = {
+      dpCode: record.dpCode || record.atmId || 'Site',
+      completedBy: record.claimedByName || record.claimedBy || currentUser?.name || currentUser?.username || 'NOC',
+      kind: record.kind || 'Branch',
+      atmId: record.atmId || '',
+      provider: record.provider || 'Uniserved',
+      deviceSerial: record.newDeviceSerial || '',
+      notes: defaultNotes,
+      completedAt: record.completedAt || new Date().toISOString()
+    };
+
+    try {
+      const res = await api.createArchivedRecord(payload);
+      setArchivedRecords(prev => [res.record, ...prev]);
+      showToast(`Site ${record.dpCode || record.atmId} saved to historic archive!`);
+    } catch (err) {
+      showToast('Could not archive site: ' + err.message, 'error');
+    }
+  };
+
   // Export handlers
   const handleExportSingle = (record) => {
     const filename = `${record.kind.toLowerCase()}-${record.dpCode || record.atmId || 'record'}.json`;
@@ -438,7 +505,7 @@ export default function App() {
   const handleExportFilteredCSV = (filteredList, filters = {}) => {
     const listToExport = filteredList || records;
     const fields = [
-      'id', 'kind', 'dpCode', 'atmId', 'feName', 'feNumber',
+      'id', 'kind', 'provider', 'dpCode', 'atmId', 'feName', 'feNumber',
       'newDeviceSerial', 'oldDeviceModel', 'oldDeviceSerial',
       'vlanConfigured', 'vlanDetails', 'vlanRemoved',
       'primaryLanIp', 'lanIpPrefix', 'primaryLanGateway', 'isDhcp', 'ipSource',
@@ -447,7 +514,7 @@ export default function App() {
       'airtelIp', 'airtelGateway', 'ceIp', 'airtelPing',
       'configuration', 'csAdded', 'deviceOnline', 'dcDrReply', 'cablesConnected', 'working',
       'uatSubmitted', 'uatFormNo', 'claimedBy', 'claimedByName',
-      'createdBy', 'updatedBy', 'created', 'updated'
+      'createdBy', 'updatedBy', 'completedAt', 'cloudIpPurged', 'created', 'updated'
     ];
 
     const csvHeader = fields.join(',');
@@ -475,6 +542,18 @@ export default function App() {
       );
     }
 
+    if (activeView === 'archived') {
+      return (
+        <ArchivedRecordsView
+          archivedRecords={archivedRecords}
+          currentUser={currentUser}
+          onAddArchive={handleAddArchive}
+          onDeleteArchive={handleDeleteArchive}
+          onNotify={showToast}
+        />
+      );
+    }
+
     if (displayedRecords.length > 0) {
       return (
         <div className="sites-grid">
@@ -488,6 +567,7 @@ export default function App() {
               onRequestTransfer={handleRequestTransfer}
               onAcceptTransfer={handleAcceptTransfer}
               onRejectTransfer={handleRejectTransfer}
+              onArchiveSite={handleArchiveSite}
               onEdit={(rec) => {
                 setRecordToEdit(rec);
                 setIsFormOpen(true);
@@ -743,6 +823,8 @@ export default function App() {
           onHandlerFilterChange={setHandlerFilter}
           ownershipFilter={handlerFilter}
           onOwnershipFilterChange={setHandlerFilter}
+          providerFilter={providerFilter}
+          onProviderFilterChange={setProviderFilter}
           users={users}
           onAddNew={() => {
             setRecordToEdit(null);
@@ -777,33 +859,37 @@ export default function App() {
         </section>
 
         {/* KPI Summary Cards AT THE BOTTOM (No Scrolling Needed to See Sites) */}
-        <div className="stats-cards-divider">
-          <span>Overall Status Breakdown ({kind === 'All' ? 'All Sites' : kind === 'Branch' ? 'Branches' : 'ATMs'})</span>
-        </div>
-        <SummaryCards
-          kind={kind}
-          total={statusStats.total}
-          completed={statusStats.completed}
-          pending={statusStats.pending}
-          onHold={statusStats.onHold}
-          failed={statusStats.failed}
-          activeFilter={activeView === 'on-hold' ? 'onHold' : activeView === 'completed' ? 'completed' : statusFilter}
-          onSelectStatus={(st) => {
-            if (st === 'onHold') {
-              setActiveView('on-hold');
-              setStatusFilter('all');
-            } else if (st === 'completed') {
-              setActiveView('completed');
-              setStatusFilter('all');
-            } else if (st === 'pending') {
-              setActiveView('my-pending');
-              setStatusFilter('all');
-            } else {
-              setActiveView('all');
-              setStatusFilter(st);
-            }
-          }}
-        />
+        {activeView !== 'archived' && (
+          <>
+            <div className="stats-cards-divider">
+              <span>Overall Status Breakdown ({kind === 'All' ? 'All Sites' : kind === 'Branch' ? 'Branches' : 'ATMs'})</span>
+            </div>
+            <SummaryCards
+              kind={kind}
+              total={statusStats.total}
+              completed={statusStats.completed}
+              pending={statusStats.pending}
+              onHold={statusStats.onHold}
+              failed={statusStats.failed}
+              activeFilter={activeView === 'on-hold' ? 'onHold' : activeView === 'completed' ? 'completed' : statusFilter}
+              onSelectStatus={(st) => {
+                if (st === 'onHold') {
+                  setActiveView('on-hold');
+                  setStatusFilter('all');
+                } else if (st === 'completed') {
+                  setActiveView('completed');
+                  setStatusFilter('all');
+                } else if (st === 'pending') {
+                  setActiveView('my-pending');
+                  setStatusFilter('all');
+                } else {
+                  setActiveView('all');
+                  setStatusFilter(st);
+                }
+              }}
+            />
+          </>
+        )}
 
         <footer className="portal-footer">
           <p>

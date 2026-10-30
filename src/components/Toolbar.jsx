@@ -3,7 +3,7 @@ import React from 'react';
 export default function Toolbar({
   activeView = 'my-pending',
   onViewChange,
-  viewCounts = { myPending: 0, completed: 0, onHold: 0, unassignedPending: 0, all: 0 },
+  viewCounts = { myPending: 0, completed: 0, onHold: 0, unassignedPending: 0, all: 0, archived: 0 },
   kind = 'All',
   onKindChange,
   totalCount = 0,
@@ -17,6 +17,8 @@ export default function Toolbar({
   onHandlerFilterChange,
   ownershipFilter,
   onOwnershipFilterChange,
+  providerFilter = 'all',
+  onProviderFilterChange,
   users = [],
   onAddNew,
   canManageUsers = false,
@@ -82,6 +84,17 @@ export default function Toolbar({
           <span className="tab-icon">👥</span>
           <span className="tab-label">All Sites & Team</span>
           <span className="view-tab-badge">{viewCounts.all}</span>
+        </button>
+
+        <button
+          type="button"
+          className={`view-tab-btn ${activeView === 'archived' ? 'active' : ''}`}
+          onClick={() => onViewChange && onViewChange('archived')}
+          title="Dedicated section for minimal historical archived deployment records"
+        >
+          <span className="tab-icon">📦</span>
+          <span className="tab-label">Archived Records</span>
+          <span className="view-tab-badge archive-badge">{viewCounts.archived || 0}</span>
         </button>
       </div>
 
@@ -149,6 +162,18 @@ export default function Toolbar({
           {/* Show full status and handler filters when on All Sites tab */}
           {activeView === 'all' && (
             <>
+              {/* Provider Filter (Uniserved vs Sify) */}
+              <select
+                className="filter-dropdown provider-filter-dropdown"
+                value={providerFilter}
+                onChange={(e) => onProviderFilterChange && onProviderFilterChange(e.target.value)}
+                aria-label="Filter by Deployment Provider"
+              >
+                <option value="all">Provider: All</option>
+                <option value="Uniserved">🏢 Uniserved</option>
+                <option value="Sify">🏢 Sify</option>
+              </select>
+
               {/* Status Filter */}
               <select
                 className="filter-dropdown status-filter-dropdown"

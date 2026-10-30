@@ -366,6 +366,61 @@ export const api = {
     return null;
   },
 
+  // Archived Records (Requirement 4)
+  async getArchivedRecords(params = {}) {
+    const query = new URLSearchParams();
+    if (params.kind) query.set('kind', params.kind);
+    if (params.provider) query.set('provider', params.provider);
+    if (params.search) query.set('search', params.search);
+
+    const res = await fetch(`${API_BASE}/archived-records?${query.toString()}`, {
+      headers: authHeaders()
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to fetch archived records');
+    }
+    return await res.json();
+  },
+
+  async createArchivedRecord(payload) {
+    const res = await fetch(`${API_BASE}/archived-records`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to create archived record');
+    }
+    return await res.json();
+  },
+
+  async deleteArchivedRecord(id) {
+    const res = await fetch(`${API_BASE}/archived-records/${id}`, {
+      method: 'DELETE',
+      headers: authHeaders()
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to delete archived record');
+    }
+    return await res.json();
+  },
+
+  // Admin Cloud 36h IP Purge Trigger
+  async triggerCloudIpPurge() {
+    const res = await fetch(`${API_BASE}/cron/purge-completed-ips`, {
+      method: 'POST',
+      headers: authHeaders()
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to trigger cloud IP purge');
+    }
+    return await res.json();
+  },
+
   downloadFile(content, fileName, contentType) {
     const blob = new Blob([content], { type: contentType });
     const url = URL.createObjectURL(blob);
