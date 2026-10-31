@@ -282,12 +282,6 @@ function rehydrateLocalIpsIfAvailable(records) {
 // -------------------------------------------------------------
 app.get('/api/records', authMiddleware, async (req, res) => {
   try {
-    // Passive 36h IP Purge: check periodically (every 10 minutes) on incoming queries
-    if (Date.now() - lastPurgeCheck > 10 * 60 * 1000) {
-      lastPurgeCheck = Date.now();
-      db.purgeEligibleCloudIps().catch(e => console.warn('Passive IP purge warn:', e.message));
-    }
-
     const { kind, working, status, search, claimedBy } = req.query;
     const records = await db.getAllRecords({ kind, working, status, search, claimedBy });
     res.json(rehydrateLocalIpsIfAvailable(records));
