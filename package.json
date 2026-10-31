@@ -9,8 +9,9 @@
     "build": "vite build",
     "start": "node server.js",
     "preview": "vite preview",
-    "sync": "node sync-agent/sync.js",
+    "sync": "node sync-agent/sync.js --oneshot",
     "sync:watch": "node sync-agent/sync.js --watch",
+    "sync:daemon": "node sync-agent/sync.js --daemon",
     "sync:status": "node sync-agent/sync.js --status"
   },
   "dependencies": {

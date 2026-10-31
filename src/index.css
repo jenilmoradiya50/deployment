@@ -4275,3 +4275,47 @@ input, select, textarea {
 .archive-form-body {
   padding: 20px;
 }
+
+/* Local SQLite Agent Status & Purged IP Re-hydration */
+.local-agent-chip {
+  transition: all 0.2s ease;
+}
+
+.local-agent-chip.online {
+  border-color: #86efac;
+  background: rgba(240, 253, 244, 0.15);
+}
+
+.local-agent-chip.offline {
+  border-color: #cbd5e1;
+  opacity: 0.85;
+}
+
+.status-pulse.local-online {
+  background: #22c55e;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.35);
+}
+
+.status-pulse.local-offline {
+  background: #94a3b8;
+}
+
+.cloud-purged-pill.local-active {
+  background: #f0fdf4;
+  color: #15803d;
+  border-color: #bbf7d0;
+}
+
+.purged-security-banner.local-active {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  border-left-color: #22c55e;
+  color: #166534;
+}
+
+.purged-security-banner.local-offline {
+  background: #fff8f8;
+  border-color: #fee2e2;
+  border-left-color: #ef4444;
+  color: #7f1d1d;
+}

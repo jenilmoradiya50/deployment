@@ -236,8 +236,8 @@ export default function RecordCard({
               </span>
             )}
             {record.cloudIpPurged && (
-              <span className="cloud-purged-pill" title="Sensitive IP parameters were scrubbed from cloud after 36-hour retention policy. Full records are archived safely in local SQLite.">
-                🔒 Local Storage (IP Purged)
+              <span className={`cloud-purged-pill ${record.retrievedFromLocal ? 'local-active' : ''}`} title={record.retrievedFromLocal ? "Sensitive IPs purged from cloud after 36h. Viewing live from your local PC database." : "Sensitive IP parameters were scrubbed from cloud after 36-hour retention policy. Start local sync companion to view."}>
+                {record.retrievedFromLocal ? '💻 Local DB Active' : '🔒 Local Storage (Cloud Purged)'}
               </span>
             )}
             
@@ -340,11 +340,20 @@ export default function RecordCard({
         )}
 
         {record.cloudIpPurged && (
-          <div className="compact-field purged-security-banner">
-            <span className="purged-shield-icon">🔒</span>
+          <div className={`compact-field purged-security-banner ${record.retrievedFromLocal ? 'local-active' : 'local-offline'}`}>
+            <span className="purged-shield-icon">{record.retrievedFromLocal ? '🟢' : '🔒'}</span>
             <div className="purged-text-block">
-              <strong>IP Details Archived Locally (Cloud Purged):</strong>
-              <span> Per security policy, confidential IP & circuit parameters were purged from cloud after 36h retention. Complete parameters are stored securely in your local SQLite database.</span>
+              {record.retrievedFromLocal ? (
+                <>
+                  <strong>Local SQLite Connected (PC Online):</strong>
+                  <span> Confidential IP parameters scrubbed from cloud per 36h retention. Viewing securely from your local PC database.</span>
+                </>
+              ) : (
+                <>
+                  <strong>IP Details Archived Locally (Cloud Purged):</strong>
+                  <span> Confidential IP parameters scrubbed from cloud after 36h retention. Start your local sync companion (<code>npm run sync:watch</code>) on this PC to view historical IP details.</span>
+                </>
+              )}
             </div>
           </div>
         )}

@@ -1,5 +1,6 @@
 {
   "remoteUrl": "https://deployment-six-pi.vercel.app",
   "syncToken": "canara_sync_secret_2026",
+  "localPort": 41732,
   "pollIntervalSeconds": 60
 }

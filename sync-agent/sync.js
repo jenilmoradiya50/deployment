@@ -1,13 +1,16 @@
 /**
- * Canara Bank SD-WAN Tracker - Secure Local Pull-Sync Agent (SQLite Engine)
+ * Canara Bank SD-WAN Tracker - Secure Local Pull-Sync Agent & Web Companion (SQLite Engine)
  * 
  * Capabilities:
  * 1. Pulls new/updated site deployment records from the hosted cloud application via outbound HTTPS.
  * 2. Saves full technical deployment data safely into local SQLite database (canara_local.db).
  * 3. Sends acknowledgment (ACK) to hosted DB so cloud can track sync status.
- * 4. Admin-Controlled Local IP Data Purge: Allows authorized admins to scrub sensitive IP details
+ * 4. Local Web Companion HTTP Bridge: Listens on http://127.0.0.1:41732 with W3C Private Network Access
+ *    and CORS headers. When the user opens the web app in their browser on this PC, the browser connects
+ *    to this local bridge to retrieve confidential IP details even after cloud 36-hour retention purge.
+ * 5. Admin-Controlled Local IP Data Purge: Allows authorized admins to scrub sensitive IP details
  *    from local database only when site is Completed and >= 36 hours have elapsed, with audit logging.
- * 5. CLI Viewer: Query historical site records locally even when cloud has purged IP details.
+ * 6. CLI Viewer: Query historical site records locally even when cloud has purged IP details.
  */
 
 const fs = require('fs');
@@ -22,6 +25,7 @@ let config = {
   remoteUrl: process.env.REMOTE_URL || 'https://deployment-six-pi.vercel.app',
   syncToken: process.env.SYNC_AGENT_TOKEN || 'canara_sync_secret_2026',
   dbFile: path.join(__dirname, 'canara_local.db'),
+  localPort: 41732,
   pollIntervalSeconds: 60
 };
 
@@ -108,7 +112,80 @@ db.exec(`
   );
 `);
 
-// HTTP Request Helper
+// Row Formatter: Converts snake_case DB row to camelCase frontend schema
+function formatLocalRecordRow(row) {
+  if (!row) return null;
+  let secIps = [];
+  try {
+    secIps = JSON.parse(row.secondary_lan_ips || '[]');
+  } catch {}
+
+  let history = [];
+  try {
+    history = JSON.parse(row.handler_history || '[]');
+  } catch {}
+
+  return {
+    id: row.id,
+    kind: row.kind || 'Branch',
+    provider: row.provider || 'Uniserved',
+    dpCode: row.dp_code || '',
+    atmId: row.atm_id || '',
+    feName: row.fe_name || '',
+    feNumber: row.fe_number || '',
+    newDeviceSerial: row.new_device_serial || '',
+    oldDeviceModel: row.old_device_model || '',
+    oldDeviceSerial: row.old_device_serial || '',
+    vlanConfigured: row.vlan_configured || 'No',
+    vlanDetails: row.vlan_details || '',
+    vlanRemoved: row.vlan_removed || 'Not Removed',
+    primaryLanIp: row.primary_lan_ip || '',
+    lanIpPrefix: row.lan_ip_prefix || '',
+    primaryLanGateway: row.primary_lan_gateway || '',
+    lanGateway: row.primary_lan_gateway || '',
+    secondaryLanIps: secIps,
+    atmIp: row.atm_ip || '',
+    atmGateway: row.atm_gateway || '',
+    isDhcp: row.is_dhcp || 'No',
+    ipSource: row.ip_source || 'Sheet',
+    bsnlPresent: row.bsnl_present || 'Yes',
+    bsnlIp: row.bsnl_ip || '',
+    bsnlGateway: row.bsnl_gateway || '',
+    bsnlPing: row.bsnl_ping || 'No',
+    jioPresent: row.jio_present || 'Yes',
+    jioIp: row.jio_ip || '',
+    jioGateway: row.jio_gateway || '',
+    jioPing: row.jio_ping || 'No',
+    airtelPresent: row.airtel_present || 'Yes',
+    airtelIs4G: row.airtel_is_4g || 'No',
+    airtelLoopbackIp: row.airtel_loopback_ip || '',
+    airtelIp: row.airtel_ip || '',
+    airtelGateway: row.airtel_gateway || '',
+    ceIp: row.ce_ip || '',
+    airtelPing: row.airtel_ping || 'No',
+    deploymentStatus: row.deployment_status || 'Pending',
+    configuration: row.configuration || 'Not completed',
+    csAdded: row.mp_added || 'No',
+    mpAdded: row.mp_added || 'No',
+    deviceOnline: row.device_online || 'No',
+    cablesConnected: row.cables_connected || 'Not connected',
+    working: row.working || 'No',
+    uatSubmitted: row.uat_submitted || 'No',
+    uatFormNo: row.uat_form_no || '',
+    claimedBy: row.claimed_by || '',
+    claimedByName: row.claimed_by_name || '',
+    notes: row.notes || '',
+    handlerHistory: history,
+    completedAt: row.completed_at || null,
+    localIpPurged: Boolean(row.local_ip_purged),
+    localIpPurgedAt: row.local_ip_purged_at || null,
+    created: row.created_at,
+    updated: row.updated_at,
+    lastSyncedAt: row.last_synced_at
+  };
+}
+
+// HTTP Request Helper for Cloud Sync
 function makeRequest(urlStr, method = 'GET', data = null, headers = {}) {
   return new Promise((resolve, reject) => {
     const url = new URL(urlStr);
@@ -168,18 +245,19 @@ function makeRequest(urlStr, method = 'GET', data = null, headers = {}) {
 // CORE SYNC LOGIC
 // -------------------------------------------------------------
 async function runSyncCycle() {
-  console.log(`\n🔄 [Sync Agent] Checking for pending cloud records at: ${config.remoteUrl}`);
+  const timestamp = new Date().toLocaleTimeString();
+  console.log(`[${timestamp}] 🔄 [Sync Agent] Checking cloud records at: ${config.remoteUrl}`);
   try {
     const pendingUrl = `${config.remoteUrl.replace(/\/$/, '')}/api/sync/pending?limit=100`;
     const res = await makeRequest(pendingUrl, 'GET');
     const records = res.records || [];
 
     if (records.length === 0) {
-      console.log(`✓ [Sync Agent] Local database is completely up to date. (0 pending records)`);
+      console.log(`[${timestamp}] ✓ [Sync Agent] Local SQLite is up to date. (0 pending records)`);
       return { syncedCount: 0 };
     }
 
-    console.log(`📥 [Sync Agent] Received ${records.length} pending record(s) from cloud. Saving to SQLite...`);
+    console.log(`[${timestamp}] 📥 [Sync Agent] Received ${records.length} pending record(s) from cloud. Saving to SQLite...`);
 
     const insertOrUpdate = db.prepare(`
       INSERT INTO local_records (
@@ -281,12 +359,149 @@ async function runSyncCycle() {
     // Acknowledge sync back to cloud
     const ackUrl = `${config.remoteUrl.replace(/\/$/, '')}/api/sync/ack`;
     await makeRequest(ackUrl, 'POST', { recordIds: syncedIds });
-    console.log(`✅ [Sync Agent] Successfully synced and acknowledged ${syncedIds.length} record(s) to SQLite.`);
+    console.log(`[${timestamp}] ✅ [Sync Agent] Successfully synced and acknowledged ${syncedIds.length} record(s) to SQLite.`);
     return { syncedCount: syncedIds.length };
   } catch (err) {
-    console.error(`❌ [Sync Agent] Sync failed: ${err.message}`);
+    console.error(`[${timestamp}] ❌ [Sync Agent] Sync failed: ${err.message}`);
     return { error: err.message };
   }
+}
+
+// -------------------------------------------------------------
+// LOCAL WEB COMPANION HTTP SERVER (Port 41732)
+// -------------------------------------------------------------
+function startCompanionServer() {
+  const localPort = config.localPort || 41732;
+
+  const server = http.createServer((req, res) => {
+    // Enable CORS and W3C Private Network Access for browsers
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Sync-Token');
+    res.setHeader('Access-Control-Allow-Private-Network', 'true');
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      return res.end();
+    }
+
+    const parsedUrl = new URL(req.url, `http://127.0.0.1:${localPort}`);
+    const pathname = parsedUrl.pathname;
+
+    // Route: GET /api/local/status
+    if (pathname === '/api/local/status' && req.method === 'GET') {
+      try {
+        const tot = db.prepare('SELECT COUNT(*) as count FROM local_records').get().count;
+        const comp = db.prepare("SELECT COUNT(*) as count FROM local_records WHERE deployment_status = 'Completed'").get().count;
+        const pend = db.prepare("SELECT COUNT(*) as count FROM local_records WHERE deployment_status = 'Pending'").get().count;
+        const purged = db.prepare("SELECT COUNT(*) as count FROM local_records WHERE local_ip_purged = 1").get().count;
+        
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          status: 'online',
+          machine: process.env.COMPUTERNAME || 'LocalPC',
+          engine: 'SQLite (node:sqlite)',
+          dbPath: config.dbFile,
+          totalSites: tot,
+          completedSites: comp,
+          pendingSites: pend,
+          localPurgedSites: purged,
+          uptimeSeconds: Math.floor(process.uptime()),
+          timestamp: new Date().toISOString()
+        }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: e.message }));
+      }
+    }
+
+    // Route: GET /api/local/records
+    if (pathname === '/api/local/records' && req.method === 'GET') {
+      try {
+        const rows = db.prepare('SELECT * FROM local_records ORDER BY last_synced_at DESC').all();
+        const records = rows.map(formatLocalRecordRow);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ count: records.length, records }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: e.message }));
+      }
+    }
+
+    // Route: GET /api/local/record/:identifier
+    if (pathname.startsWith('/api/local/record/') && req.method === 'GET') {
+      try {
+        const identifier = decodeURIComponent(pathname.replace('/api/local/record/', '')).trim();
+        const row = db.prepare(`
+          SELECT * FROM local_records
+          WHERE id = ? OR LOWER(dp_code) = LOWER(?) OR LOWER(atm_id) = LOWER(?)
+        `).get(identifier, identifier, identifier);
+
+        if (!row) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: `Site "${identifier}" not found in local SQLite` }));
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ record: formatLocalRecordRow(row) }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: e.message }));
+      }
+    }
+
+    // Route: POST /api/local/purge-ips
+    if (pathname === '/api/local/purge-ips' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', () => {
+        try {
+          const { identifier, adminUser } = JSON.parse(body || '{}');
+          if (!identifier) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ error: 'identifier is required' }));
+          }
+          const result = purgeLocalIps(identifier, adminUser || 'Admin');
+          res.writeHead(result.success ? 200 : 400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify(result));
+        } catch (e) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: e.message }));
+        }
+      });
+      return;
+    }
+
+    // Route: POST /api/local/sync-now
+    if (pathname === '/api/local/sync-now' && req.method === 'POST') {
+      runSyncCycle().then(result => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      }).catch(e => {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      });
+      return;
+    }
+
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Route not found' }));
+  });
+
+  server.listen(localPort, '127.0.0.1', () => {
+    console.log(`🌐 [Companion Server] Local SQLite HTTP Bridge listening at: http://127.0.0.1:${localPort}`);
+    console.log(`📡 [Companion Server] Web browsers on this PC can now automatically retrieve confidential IP details from local SQLite!`);
+  });
+
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.warn(`⚠️ [Companion Server] Port ${localPort} is already in use by another instance.`);
+    } else {
+      console.error(`⚠️ [Companion Server] Server error:`, err.message);
+    }
+  });
+
+  return server;
 }
 
 // -------------------------------------------------------------
@@ -302,38 +517,39 @@ function purgeLocalIps(identifier, adminUser = 'admin') {
   const record = selectStmt.get(identifier, identifier, identifier);
 
   if (!record) {
-    console.error(`❌ Site record "${identifier}" not found in local SQLite database.`);
-    return { success: false, error: 'Site record not found' };
+    console.log(`❌ [Local Purge Denied] Site "${identifier}" does not exist in local database.`);
+    return { success: false, error: `Site "${identifier}" not found in local database.` };
   }
 
-  // Idempotency check: Already purged?
+  // Idempotency: check if already purged
   if (record.local_ip_purged === 1) {
-    console.log(`ℹ️ [Local Purge] Sensitive IP details for site "${record.dp_code || record.atm_id}" were already purged on ${record.local_ip_purged_at} by ${record.local_ip_purged_by}. No changes needed.`);
-    return { success: true, message: 'Already purged', alreadyPurged: true };
+    console.log(`✓ [Local Purge Idempotent] IP parameters for site "${record.dp_code || record.atm_id}" were already purged on ${record.local_ip_purged_at} by ${record.local_ip_purged_by}.`);
+    return { success: true, alreadyPurged: true, message: `IP details already purged on ${record.local_ip_purged_at}.` };
   }
 
-  // Requirement Check 1: Must be Completed
+  // Rule 1: Site MUST be completed
   if (record.deployment_status !== 'Completed') {
-    console.error(`❌ [Local Purge Denied] Site "${record.dp_code || record.atm_id}" status is "${record.deployment_status}". IP deletion is only permitted for Completed sites.`);
-    return { success: false, error: 'Site is not Completed' };
+    console.log(`❌ [Local Purge Denied] Site "${record.dp_code || record.atm_id}" status is "${record.deployment_status}". IP deletion is only permitted for Completed sites.`);
+    return { success: false, error: `Site status is "${record.deployment_status}". Deletion is only allowed for Completed sites.` };
   }
 
-  // Requirement Check 2: At least 36 hours must have elapsed since completion
+  // Rule 2: At least 36 hours must have elapsed since completion
   if (!record.completed_at) {
-    console.error(`❌ [Local Purge Denied] Site "${record.dp_code || record.atm_id}" has no completion timestamp recorded.`);
-    return { success: false, error: 'Missing completion timestamp' };
+    console.log(`❌ [Local Purge Denied] Completion timestamp is missing for site "${record.dp_code || record.atm_id}".`);
+    return { success: false, error: 'Completion timestamp is missing.' };
   }
 
   const completedTime = new Date(record.completed_at).getTime();
-  const elapsedHours = (Date.now() - completedTime) / (1000 * 60 * 60);
+  const elapsedMs = Date.now() - completedTime;
+  const elapsedHours = elapsedMs / (1000 * 60 * 60);
 
   if (elapsedHours < 36) {
-    const remaining = (36 - elapsedHours).toFixed(1);
-    console.error(`❌ [Local Purge Denied] Only ${elapsedHours.toFixed(1)} hours have passed since completion. Policy requires at least 36 hours. Please retry in ${remaining} hours.`);
-    return { success: false, error: `Retention period active: ${remaining} hours remaining before eligible.` };
+    const remainingHours = (36 - elapsedHours).toFixed(1);
+    console.log(`❌ [Local Purge Denied] Site was completed ${elapsedHours.toFixed(1)}h ago. Must wait at least 36 hours (${remainingHours}h remaining).`);
+    return { success: false, error: `Site was completed ${elapsedHours.toFixed(1)}h ago. Must wait at least 36 hours (${remainingHours}h remaining).` };
   }
 
-  // Execute Scrubbing
+  // Execute Local IP Purge
   db.prepare(`
     UPDATE local_records SET
       primary_lan_ip = '',
@@ -477,15 +693,26 @@ if (args.includes('--status')) {
   }
   viewRecord(target);
   process.exit(0);
-} else if (args.includes('--watch') || args.includes('-w')) {
-  console.log(`🚀 Starting Canara Bank SD-WAN Local Sync Daemon (Interval: ${config.pollIntervalSeconds}s)`);
+} else if (args.includes('--watch') || args.includes('-w') || args.includes('--daemon')) {
+  console.log(`\n🚀 Starting Canara Bank SD-WAN Local Sync Daemon (Interval: ${config.pollIntervalSeconds}s)`);
   showStatus();
+  startCompanionServer();
   runSyncCycle();
   setInterval(runSyncCycle, config.pollIntervalSeconds * 1000);
 } else {
-  // Single-run sync
-  runSyncCycle().then(() => {
+  // Default: start companion server + run sync cycle once
+  // If run via CLI for one-shot: check if --oneshot
+  if (args.includes('--oneshot')) {
+    runSyncCycle().then(() => {
+      showStatus();
+      process.exit(0);
+    });
+  } else {
+    // Default interactive or background execution: keep companion server active
+    console.log(`\n🚀 Canara Bank SD-WAN Local Sync Companion`);
     showStatus();
-    process.exit(0);
-  });
+    startCompanionServer();
+    runSyncCycle();
+    setInterval(runSyncCycle, config.pollIntervalSeconds * 1000);
+  }
 }

@@ -11,10 +11,12 @@ import ProfileModal from './components/ProfileModal';
 import LoginModal from './components/LoginModal';
 import Toast from './components/Toast';
 import { api } from './services/api';
+import { localAgent } from './services/localAgent';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [dbStatus, setDbStatus] = useState(null);
+  const [localAgentStatus, setLocalAgentStatus] = useState({ online: false, checking: true });
   const [isAuthChecking, setIsAuthChecking] = useState(true);
 
   // Default to 'All' to mix Branch and ATM on home dashboard by default
@@ -86,13 +88,69 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // Fetch records
+  // Fetch records with automatic local SQLite IP re-hydration
   const loadData = useCallback(async () => {
     if (!currentUser) return;
     setIsLoading(true);
     try {
       const res = await api.getRecords();
-      setRecords(res.data || []);
+      let rawRecords = res.data || [];
+
+      // Check if local PC sync companion is active (http://127.0.0.1:41732)
+      try {
+        const localStatus = await localAgent.checkStatus();
+        setLocalAgentStatus(localStatus);
+
+        if (localStatus.online) {
+          const localRecords = await localAgent.getLocalRecords();
+          if (Array.isArray(localRecords) && localRecords.length > 0) {
+            const localMap = new Map();
+            localRecords.forEach(lr => {
+              if (lr.id) localMap.set(lr.id, lr);
+              if (lr.dpCode) localMap.set(String(lr.dpCode).trim().toLowerCase(), lr);
+              if (lr.atmId) localMap.set(String(lr.atmId).trim().toLowerCase(), lr);
+            });
+
+            // Re-hydrate scrubbed IP details from local SQLite
+            rawRecords = rawRecords.map(r => {
+              const matched = localMap.get(r.id) ||
+                (r.dpCode ? localMap.get(String(r.dpCode).trim().toLowerCase()) : null) ||
+                (r.atmId ? localMap.get(String(r.atmId).trim().toLowerCase()) : null);
+
+              if (matched && (r.cloudIpPurged || !r.bsnlIp && !r.jioIp && !r.airtelIp)) {
+                return {
+                  ...r,
+                  primaryLanIp: matched.primaryLanIp || r.primaryLanIp,
+                  lanIpPrefix: matched.lanIpPrefix || r.lanIpPrefix,
+                  primaryLanGateway: matched.primaryLanGateway || r.primaryLanGateway,
+                  lanGateway: matched.primaryLanGateway || r.lanGateway,
+                  secondaryLanIps: (matched.secondaryLanIps && matched.secondaryLanIps.length > 0) ? matched.secondaryLanIps : r.secondaryLanIps,
+                  atmIp: matched.atmIp || r.atmIp,
+                  atmGateway: matched.atmGateway || r.atmGateway,
+                  bsnlIp: matched.bsnlIp || r.bsnlIp,
+                  bsnlGateway: matched.bsnlGateway || r.bsnlGateway,
+                  bsnlPing: matched.bsnlPing || r.bsnlPing,
+                  jioIp: matched.jioIp || r.jioIp,
+                  jioGateway: matched.jioGateway || r.jioGateway,
+                  jioPing: matched.jioPing || r.jioPing,
+                  airtelIp: matched.airtelIp || r.airtelIp,
+                  airtelGateway: matched.airtelGateway || r.airtelGateway,
+                  airtelLoopbackIp: matched.airtelLoopbackIp || r.airtelLoopbackIp,
+                  ceIp: matched.ceIp || r.ceIp,
+                  airtelPing: matched.airtelPing || r.airtelPing,
+                  retrievedFromLocal: true
+                };
+              }
+              return r;
+            });
+          }
+        }
+      } catch (localErr) {
+        console.warn('Local SQLite agent check notice:', localErr.message);
+        setLocalAgentStatus({ online: false });
+      }
+
+      setRecords(rawRecords);
       const stats = await api.getStats();
       if (stats?.database) {
         setDbStatus({ type: stats.database.includes('PostgreSQL') ? 'postgresql' : 'memory' });
@@ -108,6 +166,23 @@ export default function App() {
       setIsLoading(false);
     }
   }, [currentUser, showToast]);
+
+  // Periodic polling for local SQLite agent connection status
+  useEffect(() => {
+    if (!currentUser) return;
+    const interval = setInterval(async () => {
+      try {
+        const status = await localAgent.checkStatus();
+        setLocalAgentStatus(prev => {
+          if (prev.online !== status.online) {
+            loadData();
+          }
+          return status;
+        });
+      } catch {}
+    }, 20000);
+    return () => clearInterval(interval);
+  }, [currentUser, loadData]);
 
   const loadArchivedData = useCallback(async () => {
     if (!currentUser) return;
@@ -773,6 +848,8 @@ export default function App() {
       <Header
         currentUser={currentUser}
         dbStatus={dbStatus}
+        localAgentStatus={localAgentStatus}
+        onRefreshData={loadData}
         onOpenImportExport={() => setIsImportExportOpen(true)}
         onOpenUserManagement={() => setIsUserMgmtOpen(true)}
         onOpenProfile={() => setIsProfileOpen(true)}

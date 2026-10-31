@@ -3,6 +3,8 @@ import React from 'react';
 export default function Header({
   currentUser,
   dbStatus,
+  localAgentStatus,
+  onRefreshData,
   onOpenImportExport,
   onOpenUserManagement,
   onOpenProfile,
@@ -39,6 +41,20 @@ export default function Header({
             <span className={`status-pulse ${isPostgres ? 'mongo' : 'local'}`}></span>
             <span className="db-text">
               {isPostgres ? 'PostgreSQL Cloud DB Active' : 'SQL Engine Active'}
+            </span>
+          </div>
+
+          <div
+            className={`db-indicator-chip local-agent-chip ${localAgentStatus?.online ? 'online' : 'offline'}`}
+            title={localAgentStatus?.online 
+              ? `Local SQLite DB connected on this PC (${localAgentStatus.totalSites} sites). Click to re-check.` 
+              : 'Local PC Sync Companion offline. Run "npm run sync:watch" on your PC to retrieve historical IP details for 36h purged sites. Click to re-check.'}
+            onClick={() => onRefreshData && onRefreshData()}
+            style={{ cursor: 'pointer' }}
+          >
+            <span className={`status-pulse ${localAgentStatus?.online ? 'local-online' : 'local-offline'}`}></span>
+            <span className="db-text">
+              {localAgentStatus?.online ? '💻 Local DB: Connected' : '💻 Local DB: Offline'}
             </span>
           </div>
         </div>

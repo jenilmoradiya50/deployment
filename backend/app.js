@@ -218,6 +218,64 @@ app.delete(['/api/admin/users/:id', '/api/users/:id'], authMiddleware, requireAd
 });
 
 let lastPurgeCheck = 0;
+let localSqliteDb = null;
+const localDbPath = path.join(__dirname, '../sync-agent/canara_local.db');
+
+function getLocalSqlite() {
+  if (localSqliteDb) return localSqliteDb;
+  if (fs.existsSync(localDbPath)) {
+    try {
+      const { DatabaseSync } = require('node:sqlite');
+      localSqliteDb = new DatabaseSync(localDbPath);
+      return localSqliteDb;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function rehydrateLocalIpsIfAvailable(records) {
+  const ldb = getLocalSqlite();
+  if (!ldb || !Array.isArray(records)) return records;
+
+  try {
+    const rows = ldb.prepare('SELECT * FROM local_records WHERE local_ip_purged = 0').all();
+    if (rows.length === 0) return records;
+    const lmap = new Map();
+    rows.forEach(r => {
+      if (r.id) lmap.set(r.id, r);
+      if (r.dp_code) lmap.set(String(r.dp_code).trim().toLowerCase(), r);
+      if (r.atm_id) lmap.set(String(r.atm_id).trim().toLowerCase(), r);
+    });
+
+    return records.map(r => {
+      if (r.cloudIpPurged) {
+        const m = lmap.get(r.id) ||
+                  (r.dpCode ? lmap.get(String(r.dpCode).trim().toLowerCase()) : null) ||
+                  (r.atmId ? lmap.get(String(r.atmId).trim().toLowerCase()) : null);
+        if (m) {
+          return {
+            ...r,
+            primaryLanIp: m.primary_lan_ip || r.primaryLanIp,
+            primaryLanGateway: m.primary_lan_gateway || r.primaryLanGateway,
+            lanGateway: m.primary_lan_gateway || r.lanGateway,
+            bsnlIp: m.bsnl_ip || r.bsnlIp,
+            bsnlGateway: m.bsnl_gateway || r.bsnlGateway,
+            jioIp: m.jio_ip || r.jioIp,
+            jioGateway: m.jio_gateway || r.jioGateway,
+            airtelIp: m.airtel_ip || r.airtelIp,
+            airtelGateway: m.airtel_gateway || r.airtelGateway,
+            retrievedFromLocal: true
+          };
+        }
+      }
+      return r;
+    });
+  } catch {
+    return records;
+  }
+}
 
 // -------------------------------------------------------------
 // 4. SITE RECORDS CRUD (PROTECTED)
@@ -232,7 +290,7 @@ app.get('/api/records', authMiddleware, async (req, res) => {
 
     const { kind, working, status, search, claimedBy } = req.query;
     const records = await db.getAllRecords({ kind, working, status, search, claimedBy });
-    res.json(records);
+    res.json(rehydrateLocalIpsIfAvailable(records));
   } catch (err) {
     res.status(500).json({ error: 'Failed to query records', details: err.message });
   }
@@ -242,7 +300,8 @@ app.get('/api/records/:id', authMiddleware, async (req, res) => {
   try {
     const record = await db.getRecordById(req.params.id);
     if (!record) return res.status(404).json({ error: 'Record not found' });
-    res.json(record);
+    const hydrated = rehydrateLocalIpsIfAvailable([record])[0];
+    res.json(hydrated);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch record' });
   }
